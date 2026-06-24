@@ -1,0 +1,116 @@
+{% if is_error %}
+
+<div class="alert alert-danger" role="alert">
+  <h5 class="alert-heading">Erreur de calcul</h5>
+  <p class="mb-1">{{ result.poteau }}</p>
+  {% if status %}<p class="mb-0 small font-monospace text-muted">{{ status }}</p>{% endif %}
+</div>
+
+{% else %}
+
+<div class="card border-success">
+  <div class="card-header bg-success text-white fw-semibold fs-5">
+    Résultats — Sections optimisées
+  </div>
+  <div class="card-body">
+
+    {# ── Profilés retenus ── #}
+    <div class="row g-3 mb-4">
+      <div class="col-sm-6">
+        <div class="p-3 border rounded text-center">
+          <div class="text-muted small text-uppercase mb-1">Poteau</div>
+          <div class="fs-3 fw-bold text-primary">{{ result.poteau }}</div>
+        </div>
+      </div>
+      <div class="col-sm-6">
+        <div class="p-3 border rounded text-center">
+          <div class="text-muted small text-uppercase mb-1">Traverse / arbalétrier</div>
+          <div class="fs-3 fw-bold text-primary">{{ result.traverse }}</div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Déplacements ELS ── #}
+    <h6 class="text-muted text-uppercase mb-2">État limite de service (déplacements)</h6>
+    <div class="table-responsive mb-4">
+      <table class="table table-sm table-bordered mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Critère</th>
+            <th class="text-end">Valeur</th>
+            <th class="text-end">Limite réglementaire</th>
+            <th class="text-end">Ratio atteint</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Flèche faîtière</td>
+            <td class="text-end">{{ result.fleche }} mm</td>
+            <td class="text-end">L / 200</td>
+            <td class="text-end fw-bold">L / {{ result.ratio_fleche }}</td>
+          </tr>
+          <tr>
+            <td>Dérive tête poteau (max)</td>
+            <td class="text-end">{{ result.depl_tete_pot }} mm</td>
+            <td class="text-end">H / 150</td>
+            <td class="text-end fw-bold">H / {{ result.ratio_depl }}</td>
+          </tr>
+          <tr>
+            <td>Dérive tête poteau — gauche</td>
+            <td class="text-end">{{ result.deplacement_gauche }} mm</td>
+            <td class="text-end">—</td>
+            <td class="text-end">—</td>
+          </tr>
+          <tr>
+            <td>Dérive tête poteau — droite</td>
+            <td class="text-end">{{ result.deplacement_droite }} mm</td>
+            <td class="text-end">—</td>
+            <td class="text-end">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    {# ── Taux de travail ELU ── #}
+    <h6 class="text-muted text-uppercase mb-2">État limite ultime (contraintes)</h6>
+    <div class="mb-4">
+      {% set taux = result.taux_trav | float %}
+      <div class="d-flex justify-content-between small mb-1">
+        <span>Taux de travail maximal</span>
+        <strong>{{ taux | round(1) }} %</strong>
+      </div>
+      <div class="progress" style="height: 20px;">
+        {% if taux <= 75 %}
+          {% set bar_class = "bg-success" %}
+        {% elif taux <= 90 %}
+          {% set bar_class = "bg-warning" %}
+        {% else %}
+          {% set bar_class = "bg-danger" %}
+        {% endif %}
+        {% set bar_width = taux if taux <= 100 else 100 %}
+        <div class="progress-bar {{ bar_class }}"
+             role="progressbar"
+             style="width: {{ bar_width }}%"
+             aria-valuenow="{{ taux }}"
+             aria-valuemin="0" aria-valuemax="100">
+          {{ taux | round(1) }} %
+        </div>
+      </div>
+    </div>
+
+    {# ── Masse estimée ── #}
+    {% set surface = (geom.portee / 100) * (geom.longueur / 100) %}
+    <div class="alert alert-light border mb-0">
+      <strong>Masse estimée de l'ossature (portique seul) :</strong>
+      {{ result.masse | round(0) | int }} kg
+      {% if surface > 0 %}
+      <span class="text-muted small ms-2">
+        ≈ {{ (result.masse / surface) | round(1) }} kg/m²
+      </span>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+{% endif %}

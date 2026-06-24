@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Calcul portique — Instanote{% endblock %}
+
+{% block content %}
+<h2 class="mb-1">Dimensionnement de portique métallique</h2>
+<p class="text-muted mb-4">Optimisation automatique des profilés IPE — Eurocodes neige &amp; vent NV65</p>
+
+<form hx-post="/htmx/calcul" hx-target="#resultat" hx-swap="innerHTML" hx-indicator="#spinner">
+
+  <div class="row g-4">
+
+    {# ── Géométrie ── #}
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">Géométrie du portique</div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <label class="form-label" for="hpot">Hauteur poteau <span class="text-muted">(m)</span></label>
+            <input type="number" class="form-control" id="hpot" name="hpot"
+                   step="0.05" min="1" max="20" value="3.25" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="portee">Portée <span class="text-muted">(m)</span></label>
+            <input type="number" class="form-control" id="portee" name="portee"
+                   step="0.1" min="3" max="40" value="14.70" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="pente_pct">Pente de la toiture <span class="text-muted">(%)</span></label>
+            <input type="number" class="form-control" id="pente_pct" name="pente_pct"
+                   step="1" min="3" max="45" value="10" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="longueur">Longueur du bâtiment <span class="text-muted">(m)</span></label>
+            <input type="number" class="form-control" id="longueur" name="longueur"
+                   step="0.1" min="3" max="200" value="26.80" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="entraxe">Entraxe des portiques <span class="text-muted">(m)</span></label>
+            <input type="number" class="form-control" id="entraxe" name="entraxe"
+                   step="0.05" min="1" max="20" value="6.70" required>
+          </div>
+
+          <div class="mb-0">
+            <label class="form-label" for="h_acro">Hauteur d'acrotère <span class="text-muted">(m)</span></label>
+            <input type="number" class="form-control" id="h_acro" name="h_acro"
+                   step="0.05" min="0" max="5" value="1.20">
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    {# ── Localisation ── #}
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">Localisation</div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <label class="form-label" for="departement">Numéro de département</label>
+            <input type="text" class="form-control" id="departement" name="departement"
+                   pattern="\d{2,3}" maxlength="3" placeholder="ex : 34" value="34" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="nom_commune">Nom de la commune</label>
+            <input type="text" class="form-control" id="nom_commune" name="nom_commune"
+                   placeholder="ex : Ganges" value="Ganges" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="ancien_nom_comm">
+              Ancien nom de commune
+              <span class="text-muted small">(si commune fusionnée)</span>
+            </label>
+            <input type="text" class="form-control" id="ancien_nom_comm" name="ancien_nom_comm"
+                   placeholder="laisser vide si non concerné">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="altitude">Altitude <span class="text-muted">(m NGF)</span></label>
+            <input type="number" class="form-control" id="altitude" name="altitude"
+                   step="1" min="0" max="3000" value="120" required>
+          </div>
+
+          <div class="mb-0">
+            <label class="form-label" for="rugosite">Catégorie de rugosité</label>
+            <select class="form-select" id="rugosite" name="rugosite" required>
+              {% for val, label in rugosites %}
+              <option value="{{ val }}" {% if val == "IIIb" %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    {# ── Charges permanentes ── #}
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">Charges permanentes</div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <label class="form-label" for="couv">
+              Charge de couverture <span class="text-muted">(daN/m²)</span>
+            </label>
+            <input type="number" class="form-control" id="couv" name="couv"
+                   step="1" min="0" max="200" value="21" required>
+            <div class="form-text">Bac acier ≈ 10–15, panneaux sandwich ≈ 20–30</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="divers">
+              Charges diverses <span class="text-muted">(daN/m²)</span>
+            </label>
+            <input type="number" class="form-control" id="divers" name="divers"
+                   step="1" min="0" max="100" value="3" required>
+            <div class="form-text">Suspensions, réseaux, éclairage, etc.</div>
+          </div>
+
+          <div class="mt-4 p-3 bg-light rounded small text-muted">
+            <strong>Note :</strong> Le poids propre des profilés est calculé automatiquement
+            (ρ = 7 850 kg/m³). Les charges de neige et de vent sont déterminées
+            selon NV65 à partir de la localisation.
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mt-4 d-flex align-items-center gap-3">
+    <button type="submit" class="btn btn-primary btn-lg px-5">
+      Calculer
+    </button>
+    <span id="spinner" class="htmx-indicator spinner-border spinner-border-sm text-primary" role="status">
+      <span class="visually-hidden">Calcul en cours…</span>
+    </span>
+  </div>
+
+</form>
+
+<div id="resultat" class="mt-4"></div>
+
+{% endblock %}
