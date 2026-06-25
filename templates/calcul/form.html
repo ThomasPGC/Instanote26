@@ -3,7 +3,7 @@
 
 {% block content %}
 <h2 class="mb-1">Dimensionnement de portique métallique</h2>
-<p class="text-muted mb-4">Optimisation automatique des profilés IPE — Eurocodes neige &amp; vent NV65</p>
+<p class="text-muted mb-4">Sélection automatique des sections — Eurocodes neige &amp; vent</p>
 
 <form hx-post="/htmx/calcul" hx-target="#resultat" hx-swap="innerHTML" hx-indicator="#spinner">
 
@@ -59,42 +59,44 @@
     <div class="col-lg-4">
       <div class="card h-100">
         <div class="card-header fw-semibold">Localisation</div>
-        <div class="card-body">
+        <div class="card-body d-flex flex-column">
 
+          {# Champ de recherche adresse #}
           <div class="mb-3">
-            <label class="form-label" for="departement">Numéro de département</label>
-            <input type="text" class="form-control" id="departement" name="departement"
-                   pattern="\d{2,3}" maxlength="3" placeholder="ex : 34" value="34" required>
+            <label class="form-label" for="adresse-search">Adresse ou commune</label>
+            <input type="text" class="form-control" id="adresse-search" name="q"
+                   placeholder="Tapez une adresse ou une commune…"
+                   autocomplete="off"
+                   hx-get="/htmx/geocode-search"
+                   hx-trigger="input changed delay:400ms"
+                   hx-target="#geo-results"
+                   hx-include="this">
+            <div id="geo-results" class="position-relative mt-1"></div>
           </div>
 
-          <div class="mb-3">
-            <label class="form-label" for="nom_commune">Nom de la commune</label>
-            <input type="text" class="form-control" id="nom_commune" name="nom_commune"
-                   placeholder="ex : Ganges" value="Ganges" required>
+          {# Zone remplie après sélection — contient les hidden inputs #}
+          <div id="localisation-card" class="mb-3">
+            {# hidden inputs obligatoires pour le submit #}
+            <input type="hidden" name="departement"     id="h-dept"      value="">
+            <input type="hidden" name="nom_commune"     id="h-commune"   value="">
+            <input type="hidden" name="ancien_nom_comm" id="h-old-comm"  value="">
+            <input type="hidden" name="altitude"        id="h-altitude"  value="0">
+            <div class="text-muted small fst-italic">Aucune commune sélectionnée</div>
           </div>
 
-          <div class="mb-3">
-            <label class="form-label" for="ancien_nom_comm">
-              Ancien nom de commune
-              <span class="text-muted small">(si commune fusionnée)</span>
+          {# Rugosité — obligatoire, pas de valeur par défaut #}
+          <div class="mt-auto">
+            <label class="form-label" for="rugosite">
+              Catégorie de terrain
+              <span class="text-danger">*</span>
             </label>
-            <input type="text" class="form-control" id="ancien_nom_comm" name="ancien_nom_comm"
-                   placeholder="laisser vide si non concerné">
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label" for="altitude">Altitude <span class="text-muted">(m NGF)</span></label>
-            <input type="number" class="form-control" id="altitude" name="altitude"
-                   step="1" min="0" max="3000" value="120" required>
-          </div>
-
-          <div class="mb-0">
-            <label class="form-label" for="rugosite">Catégorie de rugosité</label>
             <select class="form-select" id="rugosite" name="rugosite" required>
+              <option value="" disabled selected class="text-muted fst-italic">— Choisir la catégorie —</option>
               {% for val, label in rugosites %}
-              <option value="{{ val }}" {% if val == "IIIb" %}selected{% endif %}>{{ label }}</option>
+              <option value="{{ val }}">{{ label }}</option>
               {% endfor %}
             </select>
+            <div class="form-text">Obligatoire — détermine la pression de vent de calcul.</div>
           </div>
 
         </div>
@@ -113,7 +115,6 @@
             </label>
             <input type="number" class="form-control" id="couv" name="couv"
                    step="1" min="0" max="200" value="21" required>
-            <div class="form-text">Bac acier ≈ 10–15, panneaux sandwich ≈ 20–30</div>
           </div>
 
           <div class="mb-3">
@@ -122,13 +123,11 @@
             </label>
             <input type="number" class="form-control" id="divers" name="divers"
                    step="1" min="0" max="100" value="3" required>
-            <div class="form-text">Suspensions, réseaux, éclairage, etc.</div>
           </div>
 
-          <div class="mt-4 p-3 bg-light rounded small text-muted">
-            <strong>Note :</strong> Le poids propre des profilés est calculé automatiquement
-            (ρ = 7 850 kg/m³). Les charges de neige et de vent sont déterminées
-            selon NV65 à partir de la localisation.
+          <div class="mt-3 p-3 bg-light rounded small text-muted">
+            Poids propre des profilés calculé automatiquement.
+            Neige et vent selon Eurocodes EN 1991.
           </div>
 
         </div>
@@ -137,10 +136,18 @@
 
   </div>
 
+  {# ── Schéma SVG ── #}
+  <div class="card mt-4">
+    <div class="card-header fw-semibold text-muted">Schéma du portique</div>
+    <div class="card-body p-2 text-center bg-white">
+      <svg id="portique-svg" width="100%" height="340"
+           xmlns="http://www.w3.org/2000/svg"
+           style="max-width:560px; display:inline-block;"></svg>
+    </div>
+  </div>
+
   <div class="mt-4 d-flex align-items-center gap-3">
-    <button type="submit" class="btn btn-primary btn-lg px-5">
-      Calculer
-    </button>
+    <button type="submit" class="btn btn-primary btn-lg px-5">Calculer</button>
     <span id="spinner" class="htmx-indicator spinner-border spinner-border-sm text-primary" role="status">
       <span class="visually-hidden">Calcul en cours…</span>
     </span>
@@ -150,4 +157,5 @@
 
 <div id="resultat" class="mt-4"></div>
 
+<script src="/static/js/portique.js"></script>
 {% endblock %}

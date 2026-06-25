@@ -1,0 +1,19 @@
+{% if features %}
+<ul class="list-group shadow-sm" id="geo-suggestions">
+  {% for f in features %}
+  {% set p = f.properties %}
+  {% set coords = f.geometry.coordinates %}
+  <li class="list-group-item list-group-item-action py-2 px-3"
+      style="cursor:pointer"
+      data-lat="{{ coords[1] }}"
+      data-lon="{{ coords[0] }}"
+      data-city="{{ p.city | e }}"
+      data-context="{{ p.context | e }}"
+      data-label="{{ p.label | e }}"
+      onclick="selectCommune(this)">
+    <div class="fw-semibold small">{{ p.label }}</div>
+    <div class="text-muted" style="font-size:0.78rem">{{ p.context }}</div>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}

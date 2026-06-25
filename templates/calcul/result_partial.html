@@ -10,7 +10,7 @@
 
 <div class="card border-success">
   <div class="card-header bg-success text-white fw-semibold fs-5">
-    Résultats — Sections optimisées
+    Résultats — Sections retenues
   </div>
   <div class="card-body">
 
@@ -112,5 +112,12 @@
 
   </div>
 </div>
+
+{# Met à jour le schéma SVG avec les sections calculées #}
+<script>
+  if (typeof updatePortiqueAfterCalc === 'function') {
+    updatePortiqueAfterCalc("{{ result.poteau }}", "{{ result.traverse }}");
+  }
+</script>
 
 {% endif %}
