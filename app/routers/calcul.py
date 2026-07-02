@@ -5,6 +5,8 @@ _BUSINESS = pathlib.Path(__file__).parent.parent.parent / "business"
 if str(_BUSINESS) not in sys.path:
     sys.path.insert(0, str(_BUSINESS))
 
+import asyncio
+
 import httpx
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse
@@ -24,6 +26,7 @@ RUGOSITES = [
 ]
 
 BAN_URL = "https://api-adresse.data.gouv.fr/search/"
+BAN_REVERSE_URL = "https://api-adresse.data.gouv.fr/reverse/"
 IGN_URL = "https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevation.json"
 
 
@@ -62,18 +65,29 @@ async def geocode_fill(
     lon: float = Query(...),
     city: str = Query(...),
     context: str = Query(...),
-    old_city: str = Query(default=""),
 ):
     dept = context.split(",")[0].strip() if context else ""
     altitude = 0
+    old_city = ""
     async with httpx.AsyncClient(timeout=5.0) as client:
+        alti_resp, reverse_resp = await asyncio.gather(
+            client.get(IGN_URL, params={"lon": lon, "lat": lat, "resource": "ign_rge_alti_wld"}),
+            client.get(BAN_REVERSE_URL, params={"lon": lon, "lat": lat}),
+            return_exceptions=True,
+        )
         try:
-            r = await client.get(IGN_URL, params={"lon": lon, "lat": lat, "resource": "ign_rge_alti_wld"})
-            data = r.json()
-            z = data.get("elevations", [{}])[0].get("z", 0)
+            z = alti_resp.json().get("elevations", [{}])[0].get("z", 0)
             altitude = max(0, int(round(z)))
         except Exception:
             altitude = 0
+        try:
+            for feature in reverse_resp.json().get("features", []):
+                oldcity = feature.get("properties", {}).get("oldcity")
+                if oldcity:
+                    old_city = oldcity
+                    break
+        except Exception:
+            old_city = ""
     return templates.TemplateResponse(
         request=request,
         name="calcul/geocode_filled.html",
