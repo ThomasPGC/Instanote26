@@ -1,33 +1,86 @@
 /* Dessin filaire SVG du portique — mis à jour en temps réel */
 
-const IPE_DIM = {
-  80:  {h:80,  b:46},  100: {h:100, b:55},  120: {h:120, b:64},
-  140: {h:140, b:73},  160: {h:160, b:82},  180: {h:180, b:91},
-  200: {h:200, b:100}, 220: {h:220, b:110}, 240: {h:240, b:120},
-  270: {h:270, b:135}, 300: {h:300, b:150}, 330: {h:330, b:160},
-  360: {h:360, b:170}, 400: {h:400, b:180}, 450: {h:450, b:190},
-  500: {h:500, b:200}, 550: {h:550, b:210}, 600: {h:600, b:220},
-};
+/* Caractéristiques des profilés IPE (h, tf, Iy) — chargées depuis business/IPE.csv
+   via /api/ipe-sections (seule source de vérité, cf. lecture_ipe_csv.py) */
+let IPE_SECTIONS = {};
+let IPE_TF_RANGE = { min: Infinity, max: -Infinity };
+
+async function loadIPESections() {
+  try {
+    const r = await fetch('/api/ipe-sections');
+    IPE_SECTIONS = await r.json();
+    IPE_TF_RANGE = Object.values(IPE_SECTIONS).reduce((r, d) => ({
+      min: Math.min(r.min, d.tf), max: Math.max(r.max, d.tf),
+    }), { min: Infinity, max: -Infinity });
+  } catch (e) {
+    IPE_SECTIONS = {};
+  }
+  refreshPortique();
+}
 
 function parseIPE(label) {
   if (!label) return null;
-  const m = label.match(/(\d+)/);
-  return m ? (IPE_DIM[parseInt(m[1])] || null) : null;
+  const trimmed = label.trim();
+  if (IPE_SECTIONS[trimmed]) return IPE_SECTIONS[trimmed];
+  const m = trimmed.match(/(\d+)/);
+  return m ? (IPE_SECTIONS['IPE ' + m[1]] || null) : null;
 }
 
-/* Retourne le polygone SVG d'un élément en remplissage à l'épaisseur thick (px) */
-function rafterPoly(a, b, thick) {
+/* Épaisseur de trait (px) de la semelle, proportionnelle à tf (épaisseur d'aile réelle) */
+function flangeStrokeWidth(dim) {
+  if (!dim) return 1.4;
+  const { min, max } = IPE_TF_RANGE;
+  if (!(max > min)) return 1.4;
+  const t = (dim.tf - min) / (max - min);
+  return 1.2 + 2.8 * Math.max(0, Math.min(1, t));
+}
+
+/* Lignes d'aile haute/basse + âme d'un rampant, offset perpendiculaire à a→b.
+   "upper"/"lower" sont toujours orientées haut/bas visuellement (y croissant vers le bas),
+   quel que soit le sens de parcours a→b (rampant gauche ou droit). */
+function railLines(a, b, thick) {
   const dx = b[0]-a[0], dy = b[1]-a[1];
   const L  = Math.sqrt(dx*dx + dy*dy);
-  /* Normale interne : perpendiculaire +90° du vecteur a→b
-     Pour l'arbalétrier gauche (tl→ri), ça pointe vers l'intérieur du portique */
-  const nx = -dy/L * thick/2, ny = dx/L * thick/2;
-  return [
-    [a[0]+nx, a[1]+ny],
-    [b[0]+nx, b[1]+ny],
-    [b[0]-nx, b[1]-ny],
-    [a[0]-nx, a[1]-ny],
-  ].map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  let nx = -dy/L * thick/2, ny = dx/L * thick/2;
+  if (ny < 0) { nx = -nx; ny = -ny; }  // "lower" toujours vers le bas
+  return {
+    lower:  [[a[0]+nx, a[1]+ny], [b[0]+nx, b[1]+ny]],
+    upper:  [[a[0]-nx, a[1]-ny], [b[0]-nx, b[1]-ny]],
+    center: [a, b],
+  };
+}
+
+/* Repousse le point a le long de a→b jusqu'à ce que x atteigne faceX */
+function clipToFaceX(a, b, faceX, side) {
+  const beyond = side === 'min' ? a[0] < faceX : a[0] > faceX;
+  if (!beyond || b[0] === a[0]) return a;
+  const t = (faceX - a[0]) / (b[0] - a[0]);
+  return [faceX, a[1] + (b[1]-a[1]) * t];
+}
+
+/* Ordonnée d'une droite (p0,p1) à l'abscisse x (extrapolation incluse) */
+function lineYAtX(p0, p1, x) {
+  if (p1[0] === p0[0]) return p0[1];
+  const t = (x - p0[0]) / (p1[0] - p0[0]);
+  return p0[1] + (p1[1]-p0[1]) * t;
+}
+
+/* Jarret d'about : triangle raidisseur sous l'aile inférieure du rampant, au nœud avec le
+   poteau. under→tip est la zone de contact avec le rampant (reste à l'épaisseur de trait
+   normale) ; below→tip est la face inférieure du jarret, retournée séparément pour être
+   tracée un peu plus épaisse (à l'épaisseur du rampant). La normale est toujours orientée
+   vers le bas, quel que soit le sens de parcours a→b. */
+function jarretGeom(a, b, thick, faceX, side) {
+  const dx = b[0]-a[0], dy = b[1]-a[1];
+  const L  = Math.sqrt(dx*dx + dy*dy);
+  const ux = dx/L, uy = dy/L;
+  let nx = -dy/L * thick/2, ny = dx/L * thick/2;
+  if (ny < 0) { nx = -nx; ny = -ny; }  // toujours vers le bas, indépendamment du sens a→b
+  const under = clipToFaceX([a[0]+nx, a[1]+ny], [b[0]+nx, b[1]+ny], faceX, side);
+  const below = [under[0]+nx*3, under[1]+ny*3];         // 1,5x l'épaisseur du rampant
+  const tipDist = 0.22 * L;
+  const tip = [under[0] + ux*tipDist, under[1] + uy*tipDist]; // 22% depuis la base dessinée
+  return { under, below, tip };
 }
 
 /* ── SVG ── */
@@ -35,10 +88,10 @@ function drawPortique(opts) {
   const svg = document.getElementById('portique-svg');
   if (!svg) return;
 
-  const W = 560, H = 340;
+  const W = 560, H = 250;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
 
-  const ML = 76, MR = 52, MT = 44, MB = 50;
+  const ML = 104, MR = 108, MT = 32, MB = 44;
   const drawW = W - ML - MR;
   const drawH = H - MT - MB;
 
@@ -60,7 +113,7 @@ function drawPortique(opts) {
 
   const scaleX = (drawW - dx)         / portee;
   const scaleY = (drawH - Math.abs(dy)) / h_ref;
-  const scale  = Math.min(scaleX, scaleY) * 0.90;
+  const scale  = Math.min(scaleX, scaleY) * 0.94;
 
   const bot = H - MB;
 
@@ -70,16 +123,12 @@ function drawPortique(opts) {
   const tl  = [ML,                    bot - hpot   * scale];
   const tr  = [ML + portee * scale,   bot - hpot   * scale];
   const ri  = [ML + portee/2 * scale, bot - h_faite * scale];
-  const tla = [tl[0], tl[1] - h_acro * scale];  // sommet acrotère gauche
-  const tra = [tr[0], tr[1] - h_acro * scale];  // sommet acrotère droit
-
-  /* Portique arrière (perspective) */
-  function bk(p) { return [p[0]+dx, p[1]+dy]; }
-  const bbl = bk(bl), bbr = bk(br), btl = bk(tl), btr = bk(tr),
-        bri = bk(ri), btla = bk(tla), btra = bk(tra);
 
   function ln(a, b, cls, extra='') {
     return `<line x1="${a[0].toFixed(1)}" y1="${a[1].toFixed(1)}" x2="${b[0].toFixed(1)}" y2="${b[1].toFixed(1)}" class="${cls}" ${extra}/>`;
+  }
+  function fmtM(v) {
+    return v.toFixed(2).replace('.', ',') + ' m';
   }
   function dimH(x1, x2, y, label) {
     const mx = (x1+x2)/2;
@@ -95,12 +144,69 @@ function drawPortique(opts) {
             <line x1="${x-4}" y1="${y2}" x2="${x+4}" y2="${y2}" class="dim-tick"/>
             <text x="${x-8}" y="${my+4}" class="dim-text" text-anchor="end">${label}</text>`;
   }
+  /* Cote parallèle à un segment (p0,p1), décalée horizontalement de offsetX : les ticks
+     restent ainsi alignés sur la hauteur des points d'origine (axes horizontaux des pieds
+     de portique), tout en gardant la ligne de cote parallèle au segment d'origine. */
+  function dimPar(p0, p1, offsetX, label) {
+    const ddx = p1[0]-p0[0], ddy = p1[1]-p0[1];
+    const o0 = [p0[0]+offsetX, p0[1]];
+    const o1 = [p1[0]+offsetX, p1[1]];
+    const tick = 4;
+    const mx = (o0[0]+o1[0])/2, my = (o0[1]+o1[1])/2;
+    const ang = Math.atan2(ddy, ddx) * 180 / Math.PI;
+    return `
+      <line x1="${o0[0].toFixed(1)}" y1="${o0[1].toFixed(1)}" x2="${o1[0].toFixed(1)}" y2="${o1[1].toFixed(1)}" class="dim-line"/>
+      <line x1="${(o0[0]-tick).toFixed(1)}" y1="${o0[1].toFixed(1)}" x2="${(o0[0]+tick).toFixed(1)}" y2="${o0[1].toFixed(1)}" class="dim-tick"/>
+      <line x1="${(o1[0]-tick).toFixed(1)}" y1="${o1[1].toFixed(1)}" x2="${(o1[0]+tick).toFixed(1)}" y2="${o1[1].toFixed(1)}" class="dim-tick"/>
+      <text x="${mx.toFixed(1)}" y="${(my-4).toFixed(1)}" class="dim-text"
+            transform="rotate(${ang.toFixed(1)},${mx.toFixed(1)},${my.toFixed(1)})">${label}</text>`;
+  }
 
-  /* Sections IPE (post-calcul) */
+  /* Sections IPE : poteau/traverse post-calcul, acrotère fixé en IPE 100 */
   const dim_p = parseIPE(opts.poteau);
   const dim_t = parseIPE(opts.traverse);
+  const dim_a = IPE_SECTIONS['IPE 100'] || null;
   const sw_p  = dim_p ? dim_p.h * scale / 1000 : 0;  // épaisseur poteau en px
   const sw_t  = dim_t ? dim_t.h * scale / 1000 : 0;  // épaisseur traverse en px
+  const sw_a  = dim_a ? dim_a.h * scale / 1000 : 0;  // épaisseur acrotère en px
+  const stroke_p = flangeStrokeWidth(dim_p);  // épaisseur de trait ~ tf du poteau
+  const stroke_t = flangeStrokeWidth(dim_t);  // épaisseur de trait ~ tf de la traverse
+  const stroke_a = flangeStrokeWidth(dim_a);  // épaisseur de trait ~ tf de l'acrotère
+  const faceL = bl[0] - sw_p/2, faceR = br[0] + sw_p/2;          // parements extérieurs des poteaux
+  const faceLi = bl[0] + sw_p/2, faceRi = br[0] - sw_p/2;        // parements intérieurs des poteaux
+  const showDetailP = sw_p > 0;
+  const showDetailT = sw_t > 0;
+  const showKnee = showDetailP && showDetailT;   // jonction poteau/rampant détaillée
+  /* Acrotères alignés sur le parement extérieur du poteau (pas sur son axe) */
+  const acroCxL = faceL + sw_a/2, acroCxR = faceR - sw_a/2;
+
+  /* Jonction poteau/rampant : les semelles du poteau montent jusqu'à la projection de la
+     semelle supérieure du rampant (qui n'est pas coupée par le poteau) ; la semelle
+     inférieure du rampant et le jarret s'arrêtent sur le parement intérieur du poteau. */
+  let railL = null, railR = null;
+  let topExtL = null, topIntL = null, topCL = null;
+  let topExtR = null, topIntR = null, topCR = null;
+  if (showKnee) {
+    railL = railLines(tl, ri, sw_t);
+    railR = railLines(tr, ri, sw_t);
+    topExtL = lineYAtX(railL.upper[0], railL.upper[1], faceL);
+    topIntL = lineYAtX(railL.upper[0], railL.upper[1], faceLi);
+    topCL   = lineYAtX(railL.upper[0], railL.upper[1], bl[0]);
+    topExtR = lineYAtX(railR.upper[0], railR.upper[1], faceR);
+    topIntR = lineYAtX(railR.upper[0], railR.upper[1], faceRi);
+    topCR   = lineYAtX(railR.upper[0], railR.upper[1], br[0]);
+  }
+  const showDetailA = h_acro > 0 && showKnee && sw_a > 0;
+  /* Base de l'acrotère : posée sur la toiture (parement extérieur), sinon niveau du nœud */
+  const acroBaseYL = showKnee ? topExtL : tl[1];
+  const acroBaseYR = showKnee ? topExtR : tr[1];
+  const tla = [tl[0], acroBaseYL - h_acro * scale];  // sommet acrotère gauche
+  const tra = [tr[0], acroBaseYR - h_acro * scale];  // sommet acrotère droit
+
+  /* Portique arrière (perspective) */
+  function bk(p) { return [p[0]+dx, p[1]+dy]; }
+  const bbl = bk(bl), bbr = bk(br), btl = bk(tl), btr = bk(tr),
+        bri = bk(ri), btla = bk(tla), btra = bk(tra);
 
   /* ── Construction SVG ── */
   let h = `<defs>
@@ -109,11 +215,15 @@ function drawPortique(opts) {
       .fb  { stroke:#9ab4cc; stroke-width:1.5; fill:none; stroke-dasharray:6,4; stroke-linejoin:round }
       .fp  { stroke:#aaa;    stroke-width:1;   stroke-dasharray:4,4; fill:none }
       .fg  { stroke:#bbb;    stroke-width:1;   stroke-dasharray:8,4; fill:none }
-      .sf  { fill:rgba(26,95,168,0.14); stroke:#1a5fa8; stroke-width:0.8 }
+      .axis { stroke:#888;   stroke-width:0.75; stroke-dasharray:10,3,2,3; fill:none }
+      .sf  { fill:rgba(26,95,168,0.10); stroke:none }
+      .sflange { stroke:#1a5fa8; stroke-linecap:round; fill:none }
+      .sweb    { stroke:#1a5fa8; stroke-width:0.8; stroke-opacity:0.4; fill:none }
+      .jarret  { fill:rgba(26,95,168,0.30); stroke:#1a5fa8; stroke-width:1 }
       .dim-line { stroke:#888; stroke-width:1 }
       .dim-tick { stroke:#888; stroke-width:1 }
-      .dim-text { font-size:11px; fill:#555; text-anchor:middle; font-family:sans-serif }
-      .slabel   { font-size:11px; fill:#c0392b; font-weight:bold; font-family:sans-serif }
+      .dim-text { font-size:13px; fill:#555; text-anchor:middle; font-family:sans-serif }
+      .slabel   { font-size:13px; fill:#c0392b; font-weight:bold; font-family:sans-serif }
     </style>
     <marker id="arr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
       <polygon points="0,0 7,3.5 0,7" fill="#888"/>
@@ -138,49 +248,93 @@ function drawPortique(opts) {
     h += ln(tra, btra, 'fp');
   }
 
-  /* 3 — Remplissages des sections (dessinés AVANT les traits de structure) */
-  if (sw_p > 0) {
-    h += `<rect x="${(bl[0]-sw_p/2).toFixed(1)}" y="${tl[1].toFixed(1)}"
-               width="${sw_p.toFixed(1)}" height="${(bl[1]-tl[1]).toFixed(1)}" class="sf"/>`;
-    h += `<rect x="${(br[0]-sw_p/2).toFixed(1)}" y="${tr[1].toFixed(1)}"
-               width="${sw_p.toFixed(1)}" height="${(br[1]-tr[1]).toFixed(1)}" class="sf"/>`;
+  /* 3 — Axes de structure (traits mixtes fins), un par poteau */
+  const axisTop = Math.min(tla[1], tl[1]) - 14;
+  h += ln([bl[0], bot + 10], [bl[0], axisTop], 'axis');
+  h += ln([br[0], bot + 10], [br[0], axisTop], 'axis');
+
+  /* 4 — Remplissages + schéma aile/âme des sections (dessinés AVANT les traits de structure) */
+  if (showKnee) {
+    /* Poteaux : semelles remontant jusqu'à la semelle supérieure du rampant */
+    h += `<polygon points="${[[faceL,bl[1]],[faceL,topExtL],[faceLi,topIntL],[faceLi,bl[1]]]
+                .map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')}" class="sf"/>`;
+    h += `<polygon points="${[[faceR,br[1]],[faceR,topExtR],[faceRi,topIntR],[faceRi,br[1]]]
+                .map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')}" class="sf"/>`;
+    h += ln([faceL, bl[1]], [faceL, topExtL], 'sflange', `stroke-width="${stroke_p.toFixed(2)}"`);
+    h += ln([faceLi, bl[1]], [faceLi, topIntL], 'sflange', `stroke-width="${stroke_p.toFixed(2)}"`);
+    h += ln([bl[0], bl[1]], [bl[0], topCL], 'sweb');
+    h += ln([faceR, br[1]], [faceR, topExtR], 'sflange', `stroke-width="${stroke_p.toFixed(2)}"`);
+    h += ln([faceRi, br[1]], [faceRi, topIntR], 'sflange', `stroke-width="${stroke_p.toFixed(2)}"`);
+    h += ln([br[0], br[1]], [br[0], topCR], 'sweb');
+
+    /* Rampants : semelle supérieure non coupée (jusqu'au parement extérieur), semelle
+       inférieure + âme coupées au parement intérieur du poteau */
+    const upperStartL = [faceL, topExtL], upperStartR = [faceR, topExtR];
+    const lowerL  = clipToFaceX(railL.lower[0],  railL.lower[1],  faceLi, 'min');
+    const centerL = clipToFaceX(railL.center[0], railL.center[1], faceLi, 'min');
+    const lowerR  = clipToFaceX(railR.lower[0],  railR.lower[1],  faceRi, 'max');
+    const centerR = clipToFaceX(railR.center[0], railR.center[1], faceRi, 'max');
+
+    h += `<polygon points="${[upperStartL, railL.upper[1], railL.lower[1], lowerL]
+                .map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')}" class="sf"/>`;
+    h += `<polygon points="${[upperStartR, railR.upper[1], railR.lower[1], lowerR]
+                .map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')}" class="sf"/>`;
+    h += ln(upperStartL, railL.upper[1], 'sflange', `stroke-width="${stroke_t.toFixed(2)}"`);
+    h += ln(lowerL, railL.lower[1], 'sflange', `stroke-width="${stroke_t.toFixed(2)}"`);
+    h += ln(centerL, railL.center[1], 'sweb');
+    h += ln(upperStartR, railR.upper[1], 'sflange', `stroke-width="${stroke_t.toFixed(2)}"`);
+    h += ln(lowerR, railR.lower[1], 'sflange', `stroke-width="${stroke_t.toFixed(2)}"`);
+    h += ln(centerR, railR.center[1], 'sweb');
+
+    /* Jarret d'about aux nœuds rampant/poteau, arrêté au parement intérieur du poteau ;
+       la semelle (under→tip) est tracée à l'épaisseur de trait du rampant */
+    const jarretL = jarretGeom(tl, ri, sw_t, faceLi, 'min');
+    const jarretR = jarretGeom(tr, ri, sw_t, faceRi, 'max');
+    h += `<polygon points="${[jarretL.under, jarretL.below, jarretL.tip]
+                .map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')}" class="jarret"/>`;
+    h += `<polygon points="${[jarretR.under, jarretR.below, jarretR.tip]
+                .map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')}" class="jarret"/>`;
+    h += ln(jarretL.below, jarretL.tip, 'sflange', `stroke-width="${stroke_t.toFixed(2)}"`);
+    h += ln(jarretR.below, jarretR.tip, 'sflange', `stroke-width="${stroke_t.toFixed(2)}"`);
   }
-  if (sw_t > 0) {
-    h += `<polygon points="${rafterPoly(tl, ri, sw_t)}" class="sf"/>`;
-    h += `<polygon points="${rafterPoly(tr, ri, sw_t)}" class="sf"/>`;
+  if (showDetailA) {
+    h += ln([acroCxL-sw_a/2, acroBaseYL], [acroCxL-sw_a/2, tla[1]], 'sflange', `stroke-width="${stroke_a.toFixed(2)}"`);
+    h += ln([acroCxL+sw_a/2, acroBaseYL], [acroCxL+sw_a/2, tla[1]], 'sflange', `stroke-width="${stroke_a.toFixed(2)}"`);
+    h += ln([acroCxL, acroBaseYL], [acroCxL, tla[1]], 'sweb');
+    h += ln([acroCxR-sw_a/2, acroBaseYR], [acroCxR-sw_a/2, tra[1]], 'sflange', `stroke-width="${stroke_a.toFixed(2)}"`);
+    h += ln([acroCxR+sw_a/2, acroBaseYR], [acroCxR+sw_a/2, tra[1]], 'sflange', `stroke-width="${stroke_a.toFixed(2)}"`);
+    h += ln([acroCxR, acroBaseYR], [acroCxR, tra[1]], 'sweb');
   }
 
-  /* 4 — Sol avant — tirets gris (non structurel) */
+  /* 5 — Sol avant — tirets gris (non structurel) */
   h += ln(bl, br, 'fg');
 
-  /* 5 — Structure avant (traits pleins bleus) */
-  h += ln(bl, tl, 'ff');
-  h += ln(br, tr, 'ff');
-  h += ln(tl, ri, 'ff');
-  h += ln(tr, ri, 'ff');
-  if (h_acro > 0) {
+  /* 6 — Structure (traits pleins bleus) : seulement pour les éléments dont la section
+     détaillée n'est pas encore affichée (évite de superposer filaire + schéma aile/âme) */
+  if (!showDetailP) {
+    h += ln(bl, tl, 'ff');
+    h += ln(br, tr, 'ff');
+  }
+  if (!showDetailT) {
+    h += ln(tl, ri, 'ff');
+    h += ln(tr, ri, 'ff');
+  }
+  if (h_acro > 0 && !showDetailA) {
     h += ln(tl, tla, 'ff');
     h += ln(tr, tra, 'ff');
   }
 
-  /* 6 — Cotes */
+  /* 7 — Cotes */
   /* cote de portée */
-  h += dimH(bl[0], br[0], bot+28, `${portee.toFixed(2)} m`);
-  /* cote de hauteur poteau */
-  h += dimV(ML-32, tl[1], bl[1], `${hpot.toFixed(2)} m`);
-  /* cote acrotère (si présent) */
+  h += dimH(bl[0], br[0], bot+28, fmtM(portee));
+  /* cote de hauteur poteau + acrotère */
+  const dimX = faceL - 32;
+  h += dimV(dimX, tl[1], bl[1], fmtM(hpot));
   if (h_acro > 0.01) {
-    h += dimV(ML-32, tla[1], tl[1], `${h_acro.toFixed(2)} m`);
+    h += dimV(dimX, tla[1], tl[1], fmtM(h_acro));
   }
-
-  /* entraxe label */
-  {
-    const ex  = (bl[0]+bbl[0])/2 + 4;
-    const ey  = (bl[1]+bbl[1])/2 - 9;
-    const ang = Math.atan2(bbl[1]-bl[1], bbl[0]-bl[0]) * 180 / Math.PI;
-    h += `<text x="${ex.toFixed(1)}" y="${ey.toFixed(1)}" class="dim-text" text-anchor="start"
-          transform="rotate(${ang.toFixed(1)},${ex.toFixed(1)},${ey.toFixed(1)})">${entraxe.toFixed(2)} m</text>`;
-  }
+  /* cote d'entraxe — à droite, parallèle à la ligne de fuite 3D */
+  h += dimPar(br, bbr, 40, fmtM(entraxe));
 
   /* flèche de pente — au-dessus de l'arbalétrier gauche */
   {
@@ -208,10 +362,10 @@ function drawPortique(opts) {
                transform="rotate(${ang_deg.toFixed(1)},${lx.toFixed(1)},${ly.toFixed(1)})">${pente.toFixed(0)} %</text>`;
   }
 
-  /* 7 — Labels de sections (post-calcul) — DANS le portique, loin des cotes */
+  /* 8 — Labels de sections (post-calcul) */
   if (opts.poteau) {
-    /* Poteau gauche : à droite de l'axe, dans le portique */
-    const lx = bl[0] + sw_p/2 + 18;
+    /* Poteau gauche : à l'intérieur du portique */
+    const lx = faceLi + 18;
     const ly = (tl[1] + bl[1]) / 2;
     h += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" class="slabel" text-anchor="middle"
               transform="rotate(-90,${lx.toFixed(1)},${ly.toFixed(1)})">${opts.poteau}</text>`;
@@ -247,8 +401,10 @@ function getGeomValues(extra) {
   }, extra || {});
 }
 
+let lastExtra = null;
 function refreshPortique(extra) {
-  drawPortique(getGeomValues(extra));
+  if (extra) lastExtra = extra;
+  drawPortique(getGeomValues(extra || lastExtra));
 }
 
 /* ── Géocodage ── */
@@ -304,6 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById(id)?.addEventListener('input', () => refreshPortique());
   });
   refreshPortique();
+  loadIPESections();
 
   document.body.addEventListener('htmx:before-request', (e) => {
     if (e.detail.elt === document.querySelector('form[hx-post]')) validateGeo(e);

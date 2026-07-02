@@ -9,13 +9,20 @@ import asyncio
 
 import httpx
 from fastapi import APIRouter, Form, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 import calcport
+import lecture_ipe_csv
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+
+_IPE_TABLE = lecture_ipe_csv.Tuple_tous_ipe()
+IPE_SECTIONS = {
+    row["Nom"]: {"h": row["h"], "tf": row["tf"], "Iy": row["Iy"]}
+    for row in _IPE_TABLE.donnees
+}
 
 RUGOSITES = [
     ("0",    "Catégorie 0 — Mer, lac, zones côtières exposées"),
@@ -28,6 +35,13 @@ RUGOSITES = [
 BAN_URL = "https://api-adresse.data.gouv.fr/search/"
 BAN_REVERSE_URL = "https://api-adresse.data.gouv.fr/reverse/"
 IGN_URL = "https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevation.json"
+
+
+@router.get("/api/ipe-sections", response_class=JSONResponse)
+async def ipe_sections():
+    """Caractéristiques des profilés IPE (h, tf, Iy) pour le schéma SVG du portique —
+    seule source : business/IPE.csv, via lecture_ipe_csv."""
+    return IPE_SECTIONS
 
 
 @router.get("/calcul", response_class=HTMLResponse)
