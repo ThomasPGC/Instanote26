@@ -6,6 +6,14 @@
   {% if status %}<p class="mb-0 small font-monospace text-muted">{{ status }}</p>{% endif %}
 </div>
 
+{# Le schéma peut afficher des sections d'un calcul précédent réussi : on les efface
+   et on revient au filaire pour ne jamais montrer des sections obsolètes à côté d'une erreur #}
+<script>
+  if (typeof resetPortiqueSections === 'function') {
+    resetPortiqueSections();
+  }
+</script>
+
 {% else %}
 
 <div class="card border-success">

@@ -84,6 +84,12 @@ def jarret(section, coeff_hauteur=1.66):
     return {"Iy": I, "A": A, "Avz": Avz, "Wpl.y": Wpl}
 
 
+class PasDeSolutionIPE(Exception):
+    """Levée quand aucun profil IPE du catalogue ne satisfait les critères
+    (flèche, dérive, taux de travail) pour la géométrie/chargement donnés."""
+    pass
+
+
 def trouve_commun(liste1, liste2):
     for el in liste1:
         if el in liste2:
@@ -469,8 +475,6 @@ def optimise_IPE(geom=GEOMTEST, charges=CHARGETEST):
 
 
     """
-    pas_poss = {"poteau": "pas de solution en IPE"}
-
     critere_tete_g = geom["hpot"] / 150
     critere_tete_d = geom["hpot"] / 150
     critere_fleche = geom["portee"] / 200
@@ -504,7 +508,10 @@ def optimise_IPE(geom=GEOMTEST, charges=CHARGETEST):
         resultats_non_pond = []
 
         if ipe_arba == "IPE 600":
-            return pas_poss
+            raise PasDeSolutionIPE(
+                "Aucun profil IPE du catalogue ne satisfait les critères "
+                "de flèche/déplacement/résistance pour cette géométrie et ce chargement."
+            )
 
         if ipe_arba == ipe_pot:
             ipe_pot = IPE.trouve_decal(ipe_pot, 1)
@@ -652,6 +659,9 @@ def charge_et_sections(geom=GEOMTEST, localisation=LOCALITEST, cp=CPTEST):
 
     try:
         return optimise_IPE(geom, charges_calc), "OK"
+    except PasDeSolutionIPE:
+        return {"poteau": "Aucun profil IPE disponible pour cette configuration "
+                           "— nous contacter pour une étude spécifique"}, None
     except Exception as e:
         return {"poteau": "problème de calcul"}, e
 

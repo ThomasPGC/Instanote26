@@ -439,6 +439,7 @@ function resetGeoSearch() {
     <div class="text-muted small fst-italic">Aucune commune sélectionnée</div>`;
   document.getElementById('adresse-search').value = '';
   document.getElementById('adresse-search').focus();
+  resetPortiqueSections();
 }
 
 /* ── Validation submit ── */
@@ -494,14 +495,23 @@ function frenchifyFormValidation(form) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  ['hpot','portee','pente_pct','entraxe','h_acro'].forEach(id => {
-    document.getElementById(id)?.addEventListener('input', () => refreshPortique());
-  });
   refreshPortique();
   loadIPESections();
 
   const mainForm = document.querySelector('form[hx-post]');
-  if (mainForm) frenchifyFormValidation(mainForm);
+  if (mainForm) {
+    frenchifyFormValidation(mainForm);
+    /* Délégation sur le formulaire entier : dès qu'un champ change (géométrie,
+       adresse, rugosité, charges…), les sections affichées ne correspondent
+       plus forcément au dernier calcul → retour immédiat au filaire. */
+    mainForm.addEventListener('input', () => resetPortiqueSections());
+    mainForm.addEventListener('change', () => resetPortiqueSections());
+  }
+
+  /* La sélection/réinitialisation de commune remplace #localisation-card par
+     innerHTML (via htmx ou directement en JS) : ça ne déclenche pas d'event
+     input/change natif sur le formulaire, donc traité séparément ici. */
+  document.getElementById('localisation-card')?.addEventListener('htmx:afterSwap', () => resetPortiqueSections());
 
   document.body.addEventListener('htmx:before-request', (e) => {
     if (e.detail.elt === document.querySelector('form[hx-post]')) validateGeo(e);
@@ -511,4 +521,11 @@ document.addEventListener('DOMContentLoaded', () => {
 /* Appelé depuis result_partial après le calcul */
 function updatePortiqueAfterCalc(poteau, traverse) {
   refreshPortique({ poteau, traverse });
+}
+
+/* Appelé depuis result_partial en cas d'erreur de calcul : efface toute section
+   affichée précédemment et revient au schéma filaire, pour éviter d'afficher des
+   sections obsolètes/fausses à côté d'un message d'erreur. */
+function resetPortiqueSections() {
+  refreshPortique({});
 }

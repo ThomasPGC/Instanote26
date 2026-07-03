@@ -32,7 +32,7 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
 - Templates FastAPI : TemplateResponse(request=request, name="fichier.html")
 - Tous les endpoints HTMX dans app/routers/calcul.py
 
-## Features développées (sessions 1 & 2)
+## Features développées (sessions 1 à 3)
 
 ### Schéma SVG temps réel (static/js/portique.js)
 - Vue de face 2D mise à jour à chaque saisie (hpot, portee, pente, entraxe, h_acro)
@@ -53,10 +53,21 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
 - La rugosité (catégorie de terrain) reste un choix manuel utilisateur
 - httpx installé dans le venv pour les appels async
 
+### Gestion erreur IPE insuffisants (session 3)
+- business/calcport.py : exception métier explicite `PasDeSolutionIPE`, levée par
+  `optimise_IPE()` quand aucun profil du catalogue ne satisfait les critères
+  (flèche/déplacement/résistance), capturée dans `charge_et_sections()`
+- app/routers/calcul.py : `is_error` basé sur `status != "OK"` (fiable) au lieu
+  d'un test de sous-chaîne `"problème" in ...` (fragile, ne matchait pas tous les cas)
+- templates/calcul/result_partial.html : bloc erreur → message rouge explicite
+  ("Aucun profil IPE disponible... — nous contacter pour une étude spécifique")
+  + appel JS `resetPortiqueSections()` pour effacer les sections obsolètes
+- static/js/portique.js : `resetPortiqueSections()` + délégation d'événements
+  sur tout le formulaire (géométrie, adresse, rugosité, charges, sélection/reset
+  de commune) → le schéma repasse en filaire dès qu'un champ change, plus
+  seulement au clic sur Calculer
+
 ## Points en cours / prochaine session
-- Gestion erreur IPE insuffisants : quand aucun profil ne suffit, les anciens
-  résultats restent affichés au lieu d'un message d'erreur explicite
-- quand n'importe quelle valeur du formulaire a été modifiée, si le schéma affiche des sections, il doit instantanément revenir à la version filaire pour éviter toute confusion
 - Compactage formulaire : champs numériques sur deux colonnes, adresse élargie
 - mettre le focus sur l'image et les resultats de calcul
 - le calcul du poids au mètre carré est faux, trop bas. le calcul est masse d'acier divisé par l'entraxe et la portée. c'est la longueur totale du batiment qui est prise à la place de l'entraxe vraisemblablement

@@ -149,7 +149,7 @@ async def htmx_calcul(
     cp = {"couv": couv, "divers": divers}
 
     result, status = calcport.charge_et_sections(geom, localisation, cp)
-    is_error = "problème" in str(result.get("poteau", ""))
+    is_error = status != "OK"
 
     return templates.TemplateResponse(
         request=request,
