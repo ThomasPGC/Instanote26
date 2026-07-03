@@ -68,8 +68,10 @@ function lineYAtX(p0, p1, x) {
 /* Jarret d'about : triangle raidisseur sous l'aile inférieure du rampant, au nœud avec le
    poteau. under→tip est la zone de contact avec le rampant (reste à l'épaisseur de trait
    normale) ; below→tip est la face inférieure du jarret, retournée séparément pour être
-   tracée un peu plus épaisse (à l'épaisseur du rampant). La normale est toujours orientée
-   vers le bas, quel que soit le sens de parcours a→b. */
+   tracée un peu plus épaisse (à l'épaisseur du rampant). "below" descend à la verticale
+   depuis "under" (et non perpendiculairement au rampant) pour rester au contact du
+   parement du poteau même avec des pentes fortes. La normale est toujours orientée vers
+   le bas, quel que soit le sens de parcours a→b. */
 function jarretGeom(a, b, thick, faceX, side) {
   const dx = b[0]-a[0], dy = b[1]-a[1];
   const L  = Math.sqrt(dx*dx + dy*dy);
@@ -77,7 +79,7 @@ function jarretGeom(a, b, thick, faceX, side) {
   let nx = -dy/L * thick/2, ny = dx/L * thick/2;
   if (ny < 0) { nx = -nx; ny = -ny; }  // toujours vers le bas, indépendamment du sens a→b
   const under = clipToFaceX([a[0]+nx, a[1]+ny], [b[0]+nx, b[1]+ny], faceX, side);
-  const below = [under[0]+nx*3, under[1]+ny*3];         // 1,5x l'épaisseur du rampant
+  const below = [under[0], under[1] + thick*1.5];        // descend à la verticale, reste au poteau
   const tipDist = 0.22 * L;
   const tip = [under[0] + ux*tipDist, under[1] + uy*tipDist]; // 22% depuis la base dessinée
   return { under, below, tip };
@@ -455,12 +457,51 @@ function validateGeo(e) {
   }
 }
 
+/* ── Messages de validation HTML5 en français ──
+   Par défaut, le navigateur affiche ses propres messages ("Please fill out this
+   field", etc.) dans la langue de son interface, indépendamment de la langue de la
+   page. On les remplace ici par des messages français, adaptés au type d'erreur. */
+function frenchValidationMessage(el) {
+  const v = el.validity;
+  /* badInput (texte non numérique) doit être testé avant valueMissing : un champ
+     number avec un texte illisible ("1e", "-", …) a un .value vide, donc
+     valueMissing est aussi vrai — mais le diagnostic le plus juste est badInput. */
+  if (v.badInput) return 'Veuillez entrer un nombre.';
+  if (v.typeMismatch) return 'Veuillez entrer une valeur valide.';
+  if (v.valueMissing)   return el.tagName === 'SELECT' ? 'Veuillez sélectionner une option dans la liste.' : 'Veuillez remplir ce champ.';
+  if (v.rangeUnderflow) return `La valeur doit être supérieure ou égale à ${el.min}.`;
+  if (v.rangeOverflow)  return `La valeur doit être inférieure ou égale à ${el.max}.`;
+  if (v.stepMismatch)   return `La valeur doit être un multiple de ${el.step}.`;
+  return 'Valeur invalide.';
+}
+
+function updateFrenchValidity(el) {
+  /* on réévalue à partir de zéro : un customValidity déjà posé fausserait
+     validity.valid (il la force à false), il faut donc l'effacer d'abord */
+  el.setCustomValidity('');
+  if (!el.validity.valid) el.setCustomValidity(frenchValidationMessage(el));
+}
+
+function frenchifyFormValidation(form) {
+  form.querySelectorAll('input, select, textarea').forEach((el) => {
+    /* "invalid" seul ne suffit pas : le message natif d'un nombre mal formé
+       ("Please enter a number") s'affiche en direct pendant la saisie, avant
+       tout appel à reportValidity() — il faut donc aussi réagir à "input". */
+    el.addEventListener('input', () => updateFrenchValidity(el));
+    el.addEventListener('change', () => updateFrenchValidity(el));
+    el.addEventListener('invalid', () => updateFrenchValidity(el));
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   ['hpot','portee','pente_pct','entraxe','h_acro'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', () => refreshPortique());
   });
   refreshPortique();
   loadIPESections();
+
+  const mainForm = document.querySelector('form[hx-post]');
+  if (mainForm) frenchifyFormValidation(mainForm);
 
   document.body.addEventListener('htmx:before-request', (e) => {
     if (e.detail.elt === document.querySelector('form[hx-post]')) validateGeo(e);
