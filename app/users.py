@@ -8,11 +8,28 @@ from fastapi_users.authentication import AuthenticationBackend, CookieTransport,
 from fastapi_users.db import SQLAlchemyUserDatabase
 
 from app.database import get_user_db
+from app.email import send_email
 from app.models.user import User
+from app.templating import templates
 
 # IMPORTANT avant mise en prod : définir ces secrets comme variables d'env Railway
 # (Settings -> Variables), ne jamais les committer en dur.
 SECRET = os.environ.get("INSTANOTE26_AUTH_SECRET", "dev-secret-a-changer-absolument-en-prod")
+
+
+def _app_base_url() -> str:
+    """URL de base de l'app (ex: http://localhost:8000, https://instanote26.up.railway.app),
+    utilisée pour construire les liens de vérification/réinitialisation dans les emails.
+    Volontairement sans valeur par défaut en dur : à définir en variable d'env
+    (voir CLAUDE.md), différente en local et en prod.
+    """
+    base_url = os.environ.get("APP_BASE_URL")
+    if not base_url:
+        raise RuntimeError(
+            "APP_BASE_URL doit être défini en variable d'environnement "
+            "(ex: http://localhost:8000 en local, voir CLAUDE.md)."
+        )
+    return base_url.rstrip("/")
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
@@ -21,12 +38,23 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
 
     async def on_after_register(self, user: User, request: Optional[Request] = None):
         print(f"[auth] Nouvel utilisateur inscrit : {user.email}")
+        await self.request_verify(user, request)
+
+    async def on_after_request_verify(
+        self, user: User, token: str, request: Optional[Request] = None
+    ):
+        link = f"{_app_base_url()}/auth/verify?token={token}"
+        html_content = templates.get_template("emails/verify.html").render(link=link)
+        await send_email(user.email, "Vérifiez votre adresse email — Instanote26", html_content)
 
     async def on_after_forgot_password(
         self, user: User, token: str, request: Optional[Request] = None
     ):
-        # TODO (session future) : envoyer le token par email au lieu de le logger.
-        print(f"[auth] Reset demandé pour {user.email} — token : {token}")
+        link = f"{_app_base_url()}/auth/reset-password?token={token}"
+        html_content = templates.get_template("emails/reset_password.html").render(link=link)
+        await send_email(
+            user.email, "Réinitialisation de mot de passe — Instanote26", html_content
+        )
 
 
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):

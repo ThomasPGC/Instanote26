@@ -202,12 +202,87 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   plutôt qu'un 401 JSON, plus adapté à un site HTML) et où.
 - Créer une vraie page "Mon compte" (le lien nav n'est qu'un texte pour
   l'instant).
-- Reset de mot de passe : `on_after_forgot_password` (`app/users.py`) ne fait
-  que logger le token côté serveur — pas d'envoi d'email pour l'instant.
 - Définir `INSTANOTE26_AUTH_SECRET` en variable d'environnement Railway avant
   toute mise en prod (actuellement secret de dev en dur en fallback).
 - Le champ `plan` sur `User` n'est branché à aucune logique (préparation
   Stripe uniquement).
+
+### Emails transactionnels (session 7, branche feature/auth-fastapi-users)
+
+- **But** : vérification d'email à l'inscription + réinitialisation de mot de
+  passe par un vrai email, envoyés via l'API **Brevo** (ex-Sendinblue), pas de
+  SMTP direct.
+- **`app/email.py`** : fonction générique `send_email(to, subject,
+  html_content)`, appelle `POST https://api.brevo.com/v3/smtp/email` en async
+  (`httpx`, déjà une dépendance du projet). Lève une erreur explicite si
+  `BREVO_API_KEY` ou `EMAIL_FROM` ne sont pas définis — jamais de valeur en dur.
+- **Vérification d'email** (`app/users.py` → `UserManager`) :
+  - `on_after_register` appelle désormais `self.request_verify(user, request)`
+    (fourni par `BaseUserManager` de fastapi-users) juste après la création du
+    compte → déclenche automatiquement `on_after_request_verify`.
+  - `on_after_request_verify` construit le lien `{APP_BASE_URL}/auth/verify?token=...`
+    et envoie `templates/emails/verify.html` par email.
+  - `GET /auth/verify?token=...` (`app/routers/auth.py`) appelle
+    `user_manager.verify(token)` (passe `is_verified` à `True`) et affiche
+    `templates/auth/verify_result.html` (succès, déjà vérifié, ou lien
+    invalide/expiré — `InvalidVerifyToken`/`UserAlreadyVerified`).
+  - **Non bloquant** : la vérification n'est pas exigée pour se connecter
+    (`current_active_user` ne vérifie que `is_active`, pas `is_verified`) —
+    à décider plus tard si on veut la rendre obligatoire pour certaines
+    actions.
+- **Réinitialisation de mot de passe** :
+  - `on_after_forgot_password` (`app/users.py`) : le `print()` de la session 6
+    est remplacé par un vrai envoi d'email (lien
+    `{APP_BASE_URL}/auth/reset-password?token=...`,
+    `templates/emails/reset_password.html`).
+  - `GET/POST /auth/forgot-password` : formulaire email → déclenche
+    `user_manager.forgot_password(user)`. Répond **toujours** par le même
+    message ("si un compte existe...") que l'email soit connu ou non, pour ne
+    pas permettre à quelqu'un de deviner quels emails sont inscrits
+    (énumération de comptes).
+  - `GET /auth/reset-password?token=...` : formulaire nouveau mot de passe
+    (token dans un champ caché). `POST` appelle
+    `user_manager.reset_password(token, password)`, gère
+    `InvalidResetPasswordToken` / `UserInactive` / `InvalidPasswordException`
+    avec un message d'erreur adapté sur le formulaire.
+  - Lien "Mot de passe oublié ?" ajouté sous le formulaire de
+    `templates/auth/login.html`.
+- **Templates email** (`templates/emails/verify.html`,
+  `templates/emails/reset_password.html`) : HTML simple avec styles inline
+  (pas de lien vers `base.html` — un email n'a pas accès au CSS/Bootstrap du
+  site), rendus via `templates.get_template(...).render(...)` (pas besoin de
+  `request` : ce ne sont pas des pages web, juste du HTML à envoyer par email).
+- **Anti-email jetable** : librairie `disposable-email-domains` (liste de
+  domaines connus comme jetables/temporaires). Vérifié dans
+  `POST /auth/register` (`app/routers/auth.py`) : le domaine de l'email est
+  comparé à `disposable_email_domains.blocklist` *avant* la création du
+  compte ; si jetable, retourne l'erreur "Merci d'utiliser une adresse email
+  permanente" sur le formulaire d'inscription.
+- **Nouvelles variables d'environnement requises** (aucune valeur par défaut en
+  dur dans le code, contrairement à `INSTANOTE26_AUTH_SECRET`) :
+  - `BREVO_API_KEY` : clé API du compte Brevo (Brevo → Settings → SMTP & API →
+    API Keys).
+  - `EMAIL_FROM` : adresse expéditeur — doit être un expéditeur **validé**
+    dans le compte Brevo (Senders, Domains & Dedicated IPs), sinon l'API
+    Brevo refuse l'envoi.
+  - `APP_BASE_URL` : URL de base utilisée pour construire les liens dans les
+    emails (ex. `http://localhost:8000` en local, `https://<domaine>.up.railway.app`
+    en prod). Si absente, `app/users.py` lève une erreur explicite plutôt que
+    de deviner une URL.
+  - À définir **en local** (fichier `.env` à la racine, jamais committé —
+    `.env` était déjà dans `.gitignore` ; modèle fourni dans `.env.example`) et
+    **sur Railway** (Settings → Variables) avant tout test/déploiement.
+  - `python-dotenv` ajouté à `requirements.txt` : `load_dotenv()` appelé tout
+    en haut de `app/main.py`, **avant** les imports de `app.database`/
+    `app.routers` (qui importent `app.users`/`app.email`, lisant ces variables
+    au chargement du module) — sur Railway, `.env` n'existe pas et
+    `load_dotenv()` ne fait rien, les variables viennent directement de
+    l'environnement.
+- **Vérifié en local sans configuration Brevo** : l'inscription échoue
+  proprement (erreur explicite côté serveur signalant `APP_BASE_URL` manquant)
+  plutôt que d'échouer silencieusement ou d'envoyer un email cassé — confirme
+  que le point d'intégration est correctement branché avant le test avec de
+  vraies clés API.
 
 ### Compactage formulaire (session 4, templates/calcul/form.html)
 - Les 3 cartes (Géométrie, Charges permanentes, Localisation) passent de côte-à-côte

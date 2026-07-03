@@ -1,3 +1,11 @@
+from dotenv import load_dotenv
+
+# Doit être appelé avant les imports ci-dessous : app.users / app.email lisent
+# des variables d'environnement (BREVO_API_KEY, APP_BASE_URL...) au chargement
+# du module. En prod (Railway), les variables sont déjà dans l'environnement et
+# .env n'existe pas — load_dotenv() ne fait rien dans ce cas.
+load_dotenv()
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
