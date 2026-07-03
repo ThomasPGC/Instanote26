@@ -2,6 +2,17 @@
 {% block title %}Calcul portique — Instanote{% endblock %}
 
 {% block content %}
+<style>
+  /* Étiquette + champ sur une même ligne, l'un contre l'autre (pas d'étirement
+     même quand la colonne est large) : le champ garde une largeur fixe
+     (valeurs max du type xxx,xx). flex-wrap en filet de sécurité : si jamais
+     la colonne devient trop étroite, le champ repasse sous l'étiquette au lieu
+     de déborder de l'écran. */
+  .field-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+  .field-inline .form-label { margin-bottom: 0; }
+  .field-inline .form-control-narrow { width: 100px; flex-shrink: 0; }
+  .field-inline .form-select { flex: 1 1 200px; min-width: 0; }
+</style>
 <h2 class="mb-1">Dimensionnement de portique métallique</h2>
 <p class="text-muted mb-4">Sélection automatique des sections — Eurocodes neige &amp; vent</p>
 
@@ -10,45 +21,86 @@
   <div class="row g-4">
 
     {# ── Géométrie ── #}
-    <div class="col-lg-4">
-      <div class="card h-100">
+    <div class="col-12">
+      <div class="card">
         <div class="card-header fw-semibold">Géométrie du portique</div>
         <div class="card-body">
 
-          <div class="mb-3">
-            <label class="form-label" for="hpot">Hauteur poteau <span class="text-muted">(m)</span></label>
-            <input type="number" class="form-control" id="hpot" name="hpot"
-                   step="0.05" min="1" max="20" value="3.25" required>
+          <div class="row g-3">
+            <div class="col-12 col-lg-4">
+              <div class="field-inline">
+                <label class="form-label" for="hpot">Hauteur poteau <span class="text-muted">(m)</span></label>
+                <input type="number" class="form-control form-control-narrow" id="hpot" name="hpot"
+                       step="0.05" min="1" max="20" value="3.25" required>
+              </div>
+            </div>
+            <div class="col-12 col-lg-4">
+              <div class="field-inline">
+                <label class="form-label" for="portee">Portée <span class="text-muted">(m)</span></label>
+                <input type="number" class="form-control form-control-narrow" id="portee" name="portee"
+                       step="0.1" min="3" max="40" value="14.70" required>
+              </div>
+            </div>
+            <div class="col-12 col-lg-4">
+              <div class="field-inline">
+                <label class="form-label" for="pente_pct">Pente toiture <span class="text-muted">(%)</span></label>
+                <input type="number" class="form-control form-control-narrow" id="pente_pct" name="pente_pct"
+                       step="1" min="3" max="100" value="10" required>
+              </div>
+            </div>
+            <div class="col-12 col-lg-4">
+              <div class="field-inline">
+                <label class="form-label" for="entraxe">Entraxe portiques <span class="text-muted">(m)</span></label>
+                <input type="number" class="form-control form-control-narrow" id="entraxe" name="entraxe"
+                       step="0.05" min="1" max="20" value="6.70" required>
+              </div>
+            </div>
+            <div class="col-12 col-lg-4">
+              <div class="field-inline">
+                <label class="form-label" for="longueur">Longueur bâtiment <span class="text-muted">(m)</span></label>
+                <input type="number" class="form-control form-control-narrow" id="longueur" name="longueur"
+                       step="0.1" min="3" max="200" value="26.80" required>
+              </div>
+            </div>
+            <div class="col-12 col-lg-4">
+              <div class="field-inline">
+                <label class="form-label" for="h_acro">Hauteur acrotère <span class="text-muted">(m)</span></label>
+                <input type="number" class="form-control form-control-narrow" id="h_acro" name="h_acro"
+                       step="0.05" min="0" max="5" value="1.20">
+              </div>
+            </div>
           </div>
 
-          <div class="mb-3">
-            <label class="form-label" for="portee">Portée <span class="text-muted">(m)</span></label>
-            <input type="number" class="form-control" id="portee" name="portee"
-                   step="0.1" min="3" max="40" value="14.70" required>
+        </div>
+      </div>
+    </div>
+
+    {# ── Charges permanentes ── #}
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header fw-semibold">Charges permanentes</div>
+        <div class="card-body">
+
+          <div class="row g-3">
+            <div class="col-12 col-lg-6">
+              <div class="field-inline">
+                <label class="form-label" for="couv">Charge couverture <span class="text-muted">(daN/m²)</span></label>
+                <input type="number" class="form-control form-control-narrow" id="couv" name="couv"
+                       step="1" min="0" max="200" value="21" required>
+              </div>
+            </div>
+            <div class="col-12 col-lg-6">
+              <div class="field-inline">
+                <label class="form-label" for="divers">Charges diverses <span class="text-muted">(daN/m²)</span></label>
+                <input type="number" class="form-control form-control-narrow" id="divers" name="divers"
+                       step="1" min="0" max="100" value="3" required>
+              </div>
+            </div>
           </div>
 
-          <div class="mb-3">
-            <label class="form-label" for="pente_pct">Pente de la toiture <span class="text-muted">(%)</span></label>
-            <input type="number" class="form-control" id="pente_pct" name="pente_pct"
-                   step="1" min="3" max="100" value="10" required>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label" for="longueur">Longueur du bâtiment <span class="text-muted">(m)</span></label>
-            <input type="number" class="form-control" id="longueur" name="longueur"
-                   step="0.1" min="3" max="200" value="26.80" required>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label" for="entraxe">Entraxe des portiques <span class="text-muted">(m)</span></label>
-            <input type="number" class="form-control" id="entraxe" name="entraxe"
-                   step="0.05" min="1" max="20" value="6.70" required>
-          </div>
-
-          <div class="mb-0">
-            <label class="form-label" for="h_acro">Hauteur d'acrotère <span class="text-muted">(m)</span></label>
-            <input type="number" class="form-control" id="h_acro" name="h_acro"
-                   step="0.05" min="0" max="5" value="1.20">
+          <div class="mt-3 p-3 bg-light rounded small text-muted">
+            Poids propre des profilés calculé automatiquement.
+            Neige et vent selon Eurocodes EN 1991.
           </div>
 
         </div>
@@ -56,12 +108,12 @@
     </div>
 
     {# ── Localisation ── #}
-    <div class="col-lg-4">
-      <div class="card h-100">
+    <div class="col-12">
+      <div class="card">
         <div class="card-header fw-semibold">Localisation</div>
-        <div class="card-body d-flex flex-column">
+        <div class="card-body">
 
-          {# Champ de recherche adresse #}
+          {# Champ de recherche adresse — seul sur sa ligne, pleine largeur #}
           <div class="mb-3">
             <label class="form-label" for="adresse-search">Adresse ou commune</label>
             <input type="text" class="form-control" id="adresse-search" name="q"
@@ -72,62 +124,34 @@
                    hx-target="#geo-results"
                    hx-include="this">
             <div id="geo-results" class="position-relative mt-1"></div>
+
+            {# Zone remplie après sélection — contient les hidden inputs #}
+            <div id="localisation-card" class="mt-3">
+              {# hidden inputs obligatoires pour le submit #}
+              <input type="hidden" name="departement"     id="h-dept"      value="">
+              <input type="hidden" name="nom_commune"     id="h-commune"   value="">
+              <input type="hidden" name="ancien_nom_comm" id="h-old-comm"  value="">
+              <input type="hidden" name="altitude"        id="h-altitude"  value="0">
+              <div class="text-muted small fst-italic">Aucune commune sélectionnée</div>
+            </div>
           </div>
 
-          {# Zone remplie après sélection — contient les hidden inputs #}
-          <div id="localisation-card" class="mb-3">
-            {# hidden inputs obligatoires pour le submit #}
-            <input type="hidden" name="departement"     id="h-dept"      value="">
-            <input type="hidden" name="nom_commune"     id="h-commune"   value="">
-            <input type="hidden" name="ancien_nom_comm" id="h-old-comm"  value="">
-            <input type="hidden" name="altitude"        id="h-altitude"  value="0">
-            <div class="text-muted small fst-italic">Aucune commune sélectionnée</div>
-          </div>
-
-          {# Rugosité — obligatoire, pas de valeur par défaut #}
-          <div class="mt-auto">
-            <label class="form-label" for="rugosite">
-              Catégorie de terrain
-              <span class="text-danger">*</span>
-            </label>
-            <select class="form-select" id="rugosite" name="rugosite" required>
-              <option value="" disabled selected class="text-muted fst-italic">— Choisir la catégorie —</option>
-              {% for val, label in rugosites %}
-              <option value="{{ val }}">{{ label }}</option>
-              {% endfor %}
-            </select>
+          {# Rugosité — obligatoire, pas de valeur par défaut, en dessous, étiquette et champ
+             sur la même ligne, le select grandit pour rester lisible #}
+          <div>
+            <div class="field-inline">
+              <label class="form-label" for="rugosite">
+                Catégorie de terrain
+                <span class="text-danger">*</span>
+              </label>
+              <select class="form-select" id="rugosite" name="rugosite" required>
+                <option value="" disabled selected class="text-muted fst-italic">— Choisir la catégorie —</option>
+                {% for val, label in rugosites %}
+                <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
             <div class="form-text">Obligatoire — détermine la pression de vent de calcul.</div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-
-    {# ── Charges permanentes ── #}
-    <div class="col-lg-4">
-      <div class="card h-100">
-        <div class="card-header fw-semibold">Charges permanentes</div>
-        <div class="card-body">
-
-          <div class="mb-3">
-            <label class="form-label" for="couv">
-              Charge de couverture <span class="text-muted">(daN/m²)</span>
-            </label>
-            <input type="number" class="form-control" id="couv" name="couv"
-                   step="1" min="0" max="200" value="21" required>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label" for="divers">
-              Charges diverses <span class="text-muted">(daN/m²)</span>
-            </label>
-            <input type="number" class="form-control" id="divers" name="divers"
-                   step="1" min="0" max="100" value="3" required>
-          </div>
-
-          <div class="mt-3 p-3 bg-light rounded small text-muted">
-            Poids propre des profilés calculé automatiquement.
-            Neige et vent selon Eurocodes EN 1991.
           </div>
 
         </div>

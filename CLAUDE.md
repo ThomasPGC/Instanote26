@@ -67,8 +67,30 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   de commune) → le schéma repasse en filaire dès qu'un champ change, plus
   seulement au clic sur Calculer
 
+### Compactage formulaire (session 4, templates/calcul/form.html)
+- Les 3 cartes (Géométrie, Charges permanentes, Localisation) passent de côte-à-côte
+  (col-lg-4) à empilées en pleine largeur (col-12), dans cet ordre — Localisation
+  en dernier, en bas
+- Chaque champ numérique : étiquette + input sur la même ligne (classe utilitaire
+  `.field-inline`, flexbox, définie en `<style>` inline dans form.html) plutôt
+  qu'étiquette au-dessus — évite une ligne perdue par champ. `.field-inline` a
+  `flex-wrap: wrap` en filet de sécurité : si la colonne devient trop étroite,
+  le champ repasse sous l'étiquette au lieu de déborder de l'écran
+- Géométrie : 3 champs par ligne (`col-12 col-lg-4`) ; Charges permanentes :
+  2 champs par ligne (`col-12 col-lg-6`) ; empilés en colonne unique sous lg
+  (992px) — breakpoint volontairement plus haut que `md` pour que les mobiles
+  en paysage et les petites tablettes restent aussi en une seule colonne
+- Spinners resserrés à largeur fixe 100px (`.form-control-narrow` dans
+  `.field-inline`) — les valeurs sont toutes du type xxx,xx, pas besoin de plus
+- Localisation : adresse seule sur sa ligne, pleine largeur (autocomplétion) ;
+  catégorie de terrain en dessous, étiquette + select sur la même ligne
+  (`.field-inline`, le select en `flex: 1 1 200px` pour rester lisible sans être
+  tronqué, ex. "Catégorie IIIb — Zones périurbaines, forêts")
+- static/js/portique.js s'appuie uniquement sur les id (#hpot, #localisation-card,
+  etc.), aucune dépendance aux classes de grille → resterait à vérifier si un futur
+  changement de layout modifie/supprime ces id
+
 ## Points en cours / prochaine session
-- Compactage formulaire : champs numériques sur deux colonnes, adresse élargie
 - mettre le focus sur l'image et les resultats de calcul
 - le calcul du poids au mètre carré est faux, trop bas. le calcul est masse d'acier divisé par l'entraxe et la portée. c'est la longueur totale du batiment qui est prise à la place de l'entraxe vraisemblablement
 - Préparer la sortie image pour futur PDF (WeasyPrint) : évaluer SVG inline
