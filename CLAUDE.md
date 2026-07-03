@@ -1,5 +1,14 @@
 # Instanote26 — SaaS calcul charpente métallique
 
+## Communication
+- Toujours répondre en français.
+- Le user maîtrise bien le métier (calcul de charpente métallique, Eurocodes,
+  IPE...) et le code Python dédié (business/). Il est plutôt débutant sur tout
+  le reste (dev web, FastAPI/Jinja2/HTMX, git, infra, déploiement...) → être
+  pédagogue sur ces sujets-là : expliquer les concepts et le vocabulaire
+  technique au fil de l'eau, pas juste balancer du jargon ou des commandes sans
+  contexte.
+
 ## Stack
 - FastAPI + Jinja2 + HTMX + Bootstrap 5
 - SQLite (dev) → PostgreSQL (prod)
