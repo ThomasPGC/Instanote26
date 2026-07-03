@@ -2,11 +2,11 @@ from datetime import date
 
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
-from fastapi.templating import Jinja2Templates
 from weasyprint import HTML
 
+from app.templating import templates
+
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 
 @router.get("/test-pdf")

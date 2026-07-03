@@ -129,6 +129,86 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   - À tester après chaque déploiement Railway : `GET /test-pdf` (sonde isolée,
     ne dépend pas du calcul métier).
 
+### Authentification fastapi-users (session 6, branche feature/auth-fastapi-users)
+
+- **But de cette session** : brancher l'inscription/connexion en isolation, sans
+  protéger aucune route de calcul existante (calcul.py, pdf_test.py inchangés
+  dans leur logique métier).
+- **Nouveaux fichiers** :
+  - `app/base.py` : classe `Base` (SQLAlchemy `DeclarativeBase`) partagée,
+    séparée pour éviter un import circulaire entre `database.py` et
+    `models/user.py`.
+  - `app/database.py` : moteur SQLite async (`sqlite+aiosqlite:///./instanote26.db`,
+    fichier gitignored par `*.db`), `create_db_and_tables()` appelé dans le
+    `lifespan` de `app/main.py`. Migration Postgres prévue plus tard : remplacer
+    `DATABASE_URL` par la variable d'env fournie par l'addon Postgres Railway
+    (voir commentaire dans le fichier).
+  - `app/models/user.py` : table `User` (hérite de `SQLAlchemyBaseUserTableUUID`
+    → id/email/hashed_password/is_active/is_superuser/is_verified déjà inclus) +
+    champ `plan` (S235/S275/S355) préparé pour une future intégration Stripe,
+    **aucune logique ne l'utilise encore**.
+  - `app/schemas/user.py` : schémas Pydantic `UserRead`/`UserCreate`/`UserUpdate`
+    pour fastapi-users.
+  - `app/users.py` : `UserManager`, backend d'authentification par **cookie**
+    (plus adapté qu'un Bearer token à un site rendu côté serveur Jinja2 + HTMX),
+    JWT signé avec le secret `INSTANOTE26_AUTH_SECRET` (variable d'env, valeur
+    par défaut de dev en dur dans le code — **à définir sur Railway avant toute
+    mise en prod**). Expose `current_active_user` et
+    `current_active_user_optional`, prêts à être utilisés en `Depends(...)` sur
+    n'importe quelle route le jour où on voudra protéger quelque chose.
+  - `app/routers/auth.py` : routes `GET/POST /auth/login`, `GET/POST
+    /auth/register`, `GET /auth/logout`. Ne réutilise pas les routeurs tout
+    faits de fastapi-users (pensés pour une API JSON) : gère à la main l'appel à
+    `UserManager` + au backend d'auth pour renvoyer de vraies pages Jinja2 et des
+    redirects HTTP classiques (303) plutôt que des réponses JSON.
+    - **Piège rencontré** : la version installée de fastapi-users (15.0.5) a une
+      API différente de celle du module d'origine —
+      `CookieTransport.get_login_response(token)` /
+      `get_logout_response()` construisent et renvoient désormais eux-mêmes leur
+      `Response` (au lieu de prendre une réponse existante en paramètre à
+      modifier). Adapté en récupérant cette réponse puis en la transformant en
+      redirect (`response.status_code = 303` + `response.headers["location"]`).
+      À garder en tête si un futur `pip install --upgrade fastapi-users` change
+      encore cette API.
+  - `templates/auth/login.html` / `register.html` : déjà compatibles avec les
+    blocks de `base.html` (`{% extends "base.html" %}` + `block content`), pas
+    d'adaptation nécessaire.
+  - `app/middleware.py` : `CurrentUserMiddleware` (Starlette
+    `BaseHTTPMiddleware`) posé sur chaque requête via
+    `app.add_middleware(...)` dans `main.py`. Décode le cookie
+    `instanote26_auth` (nom lu depuis `cookie_transport.cookie_name`, pas
+    dupliqué en dur) et peuple `request.state.user` (objet `User` actif, ou
+    `None`) — sans cookie, retourne `None` immédiatement, aucune requête DB. Ça
+    permet à `base.html` d'afficher l'état de connexion sans que chaque route
+    (calcul, pdf...) ait à déclarer une dépendance `current_active_user`.
+- **Centralisation Jinja2Templates** : il y avait 3 instances séparées de
+  `Jinja2Templates(directory="templates")` (dans `main.py`, `calcul.py`,
+  `pdf_test.py`). Regroupées dans `app/templating.py` (`from app.templating
+  import templates`), utilisé aussi par `app/routers/auth.py`.
+- **Nav conditionnelle** (`templates/base.html`) : `{% if request.state.user
+  %}` → affiche "Mon compte — {email}" (texte simple, **pas un lien** : il n'y
+  a pas encore de page compte) + lien "Déconnexion" (`/auth/logout`) ; sinon
+  affiche les liens "Connexion"/"Inscription" comme avant.
+- **Dépendances ajoutées** (`requirements.txt`) : `fastapi-users[sqlalchemy]`,
+  `aiosqlite`, `argon2-cffi` (hashage des mots de passe). `python-multipart`
+  était déjà présent (utilisé aussi par les formulaires HTMX existants).
+- **Vérifié en local** : démarrage propre, cycle complet register → cookie posé
+  → nav "Mon compte" → logout → nav repasse en Connexion/Inscription, et
+  `/calcul` + `/test-pdf` toujours 200 sans changement de comportement.
+
+**Reste à faire (auth)** :
+- Aucune route n'est protégée : décider quelles pages nécessiteront
+  `current_active_user` (ou `_optional` + redirect manuel vers `/auth/login`
+  plutôt qu'un 401 JSON, plus adapté à un site HTML) et où.
+- Créer une vraie page "Mon compte" (le lien nav n'est qu'un texte pour
+  l'instant).
+- Reset de mot de passe : `on_after_forgot_password` (`app/users.py`) ne fait
+  que logger le token côté serveur — pas d'envoi d'email pour l'instant.
+- Définir `INSTANOTE26_AUTH_SECRET` en variable d'environnement Railway avant
+  toute mise en prod (actuellement secret de dev en dur en fallback).
+- Le champ `plan` sur `User` n'est branché à aucune logique (préparation
+  Stripe uniquement).
+
 ### Compactage formulaire (session 4, templates/calcul/form.html)
 - Les 3 cartes (Géométrie, Charges permanentes, Localisation) passent de côte-à-côte
   (col-lg-4) à empilées en pleine largeur (col-12), dans cet ordre — Localisation
