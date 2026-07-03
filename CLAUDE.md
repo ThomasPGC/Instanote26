@@ -67,6 +67,59 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   de commune) → le schéma repasse en filaire dès qu'un champ change, plus
   seulement au clic sur Calculer
 
+### Export PDF (session 5)
+
+- **Endpoint de test isolé** (`app/routers/pdf_test.py` + `templates/pdf_test.html`,
+  `GET /test-pdf`) : valide la chaîne HTML → PDF avec WeasyPrint, PDF généré en
+  mémoire (`HTML(string=...).write_pdf()`, pas d'écriture disque). Volontairement
+  déconnecté du calcul réel (n'importe rien de `business/`) — sert de sonde rapide
+  pour tester WeasyPrint en prod après déploiement, indépendamment du reste.
+- **Export PDF de la note de calcul** (`app/routers/calcul.py` → `POST
+  /htmx/calcul-pdf`, `templates/calcul/pdf_result.html`) : hypothèses (dimensions,
+  adresse, terrain, charges), schéma du portique, sections retenues, tableau
+  flèche/déplacements, taux de travail, masse estimée.
+  - Bouton "Télécharger le PDF" à côté de "Calculer" (`templates/calcul/form.html`),
+    grisé par défaut, activé/regrisé via les mêmes hooks JS que le schéma
+    (`updatePortiqueAfterCalc` / `resetPortiqueSections` dans `portique.js`) —
+    donc grisé dès qu'un champ change après un calcul, pas seulement en cas d'erreur.
+  - Formulaire dédié `#pdf-form`, séparé du formulaire principal (qui a `hx-post` —
+    un bouton avec `formaction` dans ce même form aurait été ignoré par htmx, qui
+    intercepte l'event submit du form entier). Le bouton PDF s'y rattache via
+    l'attribut HTML5 `form="pdf-form"` tout en restant visuellement à côté de
+    Calculer. Soumission navigateur classique (pas ajax) pour laisser le
+    téléchargement du PDF se faire nativement.
+  - `preparePdfForm()` (portique.js) recopie les valeurs du formulaire principal +
+    le schéma SVG affiché (`outerHTML`) dans les champs cachés de `#pdf-form`
+    juste avant l'envoi.
+  - Le résultat n'est pas conservé côté serveur entre le calcul htmx et l'export :
+    `/htmx/calcul-pdf` relance `calcport.charge_et_sections()` avec les valeurs
+    soumises.
+  - `_prepare_svg_for_pdf()` (calcul.py) : WeasyPrint ignore le `width="100%"` /
+    `style="...aspect-ratio...height:auto..."` du SVG live (rendu minuscule et
+    mal positionné) → remplacés par des attributs `width`/`height` en pixels
+    calculés depuis le `viewBox`, seule approche fiable constatée.
+- **Dépendance système WeasyPrint** (pas gérée par pip) : nécessite Pango/GObject
+  au runtime, pas seulement à l'install.
+  - Windows (dev) : runtime GTK installé manuellement hors venv (paquet GTK
+    packagé par l'équipe WeasyPrint) — sans lui, `ImportError`/`OSError` au
+    premier `from weasyprint import HTML`.
+  - Railway (prod) : builder confirmé = **Railpack** (successeur de Nixpacks,
+    standard actuel Railway). `railpack.json` (racine du repo) déclare
+    `deploy.aptPackages` : `libpango-1.0-0`, `libpangoft2-1.0-0`,
+    `libharfbuzz-subset0` (liste officielle WeasyPrint pour Debian ≥ 11 avec
+    wheels — `libgdk-pixbuf2.0-0` n'est plus nécessaire depuis que WeasyPrint
+    utilise Pillow pour les images). Paquets déclarés en `deploy` (runtime) et non
+    `build` : WeasyPrint n'est sollicité qu'à l'exécution des requêtes PDF, pas à
+    l'install pip. Si le service Railway est un jour repassé sur l'ancien builder
+    Nixpacks, l'équivalent est `[phases.setup] aptPkgs = [...]` dans un
+    `nixpacks.toml` (non créé pour l'instant, pas de doublon de config tant que
+    Railpack est actif).
+  - Procfile inchangé et toujours respecté par Railpack (détection automatique
+    des Procfile confirmée dans la doc Railway) — aucun conflit entre les deux
+    fichiers.
+  - À tester après chaque déploiement Railway : `GET /test-pdf` (sonde isolée,
+    ne dépend pas du calcul métier).
+
 ### Compactage formulaire (session 4, templates/calcul/form.html)
 - Les 3 cartes (Géométrie, Charges permanentes, Localisation) passent de côte-à-côte
   (col-lg-4) à empilées en pleine largeur (col-12), dans cet ordre — Localisation
@@ -92,9 +145,9 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
 
 ## Points en cours / prochaine session
 - mettre le focus sur l'image et les resultats de calcul
-- le calcul du poids au mètre carré est faux, trop bas. le calcul est masse d'acier divisé par l'entraxe et la portée. c'est la longueur totale du batiment qui est prise à la place de l'entraxe vraisemblablement
-- Préparer la sortie image pour futur PDF (WeasyPrint) : évaluer SVG inline
-  vs PNG en mémoire (voir aussi ci dessus dans le chapitre svg)
+- le calcul du poids au mètre carré est faux, trop bas. le calcul est masse d'acier divisé par l'entraxe et la portée. c'est la longueur totale du batiment qui est prise à la place de l'entraxe vraisemblablement (bug repris tel quel dans templates/calcul/pdf_result.html, pas corrigé lors de l'ajout du PDF)
+- vérifier `GET /test-pdf` juste après le prochain déploiement Railway pour confirmer
+  que les paquets apt de `railpack.json` suffisent bien à WeasyPrint en prod
 
 ## Refactoring futur (branche séparée)
 - Migration calcul vers PyNite pour géométrie variable (gestin fine des jarrets, portiques asymétriques,

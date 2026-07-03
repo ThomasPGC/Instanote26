@@ -521,11 +521,47 @@ document.addEventListener('DOMContentLoaded', () => {
 /* Appelé depuis result_partial après le calcul */
 function updatePortiqueAfterCalc(poteau, traverse) {
   refreshPortique({ poteau, traverse });
+  const btnPdf = document.getElementById('btn-pdf');
+  if (btnPdf) btnPdf.disabled = false;
 }
 
 /* Appelé depuis result_partial en cas d'erreur de calcul : efface toute section
    affichée précédemment et revient au schéma filaire, pour éviter d'afficher des
-   sections obsolètes/fausses à côté d'un message d'erreur. */
+   sections obsolètes/fausses à côté d'un message d'erreur. Le bouton PDF est aussi
+   regrisé : dès qu'un champ change ou qu'un calcul échoue, le dernier PDF possible
+   ne correspondrait plus aux valeurs affichées. */
 function resetPortiqueSections() {
   refreshPortique({});
+  const btnPdf = document.getElementById('btn-pdf');
+  if (btnPdf) btnPdf.disabled = true;
+}
+
+/* ── Export PDF ──
+   Recopie les valeurs actuelles du formulaire de calcul (y compris la localisation,
+   remplie dans #localisation-card par géocodage) et le schéma SVG affiché à l'écran
+   dans le formulaire dédié #pdf-form, juste avant sa soumission classique (non-htmx). */
+function preparePdfForm() {
+  const setVal = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.value = value ?? '';
+  };
+  const geoField = (name) =>
+    document.querySelector(`#localisation-card input[name="${name}"]`)?.value || '';
+
+  setVal('pdf-hpot',      document.getElementById('hpot')?.value);
+  setVal('pdf-portee',    document.getElementById('portee')?.value);
+  setVal('pdf-pente_pct', document.getElementById('pente_pct')?.value);
+  setVal('pdf-longueur',  document.getElementById('longueur')?.value);
+  setVal('pdf-entraxe',   document.getElementById('entraxe')?.value);
+  setVal('pdf-h_acro',    document.getElementById('h_acro')?.value || '0');
+  setVal('pdf-departement',     geoField('departement'));
+  setVal('pdf-nom_commune',     geoField('nom_commune'));
+  setVal('pdf-ancien_nom_comm', geoField('ancien_nom_comm'));
+  setVal('pdf-altitude',        geoField('altitude') || '0');
+  setVal('pdf-rugosite', document.getElementById('rugosite')?.value);
+  setVal('pdf-couv',     document.getElementById('couv')?.value);
+  setVal('pdf-divers',   document.getElementById('divers')?.value);
+
+  const svg = document.getElementById('portique-svg');
+  setVal('pdf-svg-markup', svg ? svg.outerHTML : '');
 }

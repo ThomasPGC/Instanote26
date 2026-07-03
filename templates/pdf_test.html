@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>{{ titre }}</title>
+<style>
+    @page {
+        size: A4;
+        margin: 2cm 1.5cm;
+    }
+    body {
+        font-family: "Helvetica", "Arial", sans-serif;
+        font-size: 11pt;
+        color: #222;
+    }
+    h1 {
+        font-size: 18pt;
+        color: #1a3e6f;
+        border-bottom: 2px solid #1a3e6f;
+        padding-bottom: 0.3cm;
+        margin-bottom: 0.5cm;
+    }
+    .date {
+        font-size: 9pt;
+        color: #666;
+        margin-bottom: 1cm;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.5cm;
+    }
+    th, td {
+        border: 1px solid #ccc;
+        padding: 0.2cm 0.4cm;
+        text-align: left;
+    }
+    th {
+        background-color: #1a3e6f;
+        color: #fff;
+    }
+    tr:nth-child(even) {
+        background-color: #f2f2f2;
+    }
+</style>
+</head>
+<body>
+    <h1>{{ titre }}</h1>
+    <p class="date">Généré le {{ date_du_jour }}</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Désignation</th>
+                <th>Quantité</th>
+                <th>Poids unitaire (kg/m)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in lignes %}
+            <tr>
+                <td>{{ ligne.designation }}</td>
+                <td>{{ ligne.quantite }}</td>
+                <td>{{ ligne.poids_unitaire }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

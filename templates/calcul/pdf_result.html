@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Note de calcul — {{ nom_commune }}</title>
+<style>
+    @page {
+        size: A4;
+        margin: 2cm 1.5cm;
+    }
+    body {
+        font-family: "Helvetica", "Arial", sans-serif;
+        font-size: 10.5pt;
+        color: #222;
+    }
+    h1 {
+        font-size: 17pt;
+        color: #1a3e6f;
+        border-bottom: 2px solid #1a3e6f;
+        padding-bottom: 0.3cm;
+        margin-bottom: 0.2cm;
+    }
+    .subtitle {
+        font-size: 9pt;
+        color: #666;
+        margin-bottom: 0.6cm;
+    }
+    h2 {
+        font-size: 12pt;
+        color: #1a3e6f;
+        margin-top: 0.8cm;
+        margin-bottom: 0.3cm;
+        border-left: 4px solid #1a3e6f;
+        padding-left: 0.25cm;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 0.3cm;
+    }
+    th, td {
+        border: 1px solid #ccc;
+        padding: 0.15cm 0.3cm;
+        text-align: left;
+        font-size: 9.5pt;
+    }
+    th {
+        background-color: #1a3e6f;
+        color: #fff;
+    }
+    tr:nth-child(even) {
+        background-color: #f4f6f8;
+    }
+    .kv-table td:first-child {
+        color: #555;
+        width: 45%;
+    }
+    .kv-table td:last-child {
+        font-weight: 600;
+    }
+    .schema-wrap {
+        text-align: center;
+        margin: 0.3cm 0 0.5cm;
+    }
+    .sections-row {
+        display: flex;
+        gap: 0.6cm;
+        margin-bottom: 0.4cm;
+    }
+    .section-box {
+        flex: 1;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 0.3cm;
+        text-align: center;
+    }
+    .section-box .label {
+        font-size: 8.5pt;
+        text-transform: uppercase;
+        color: #666;
+    }
+    .section-box .value {
+        font-size: 15pt;
+        font-weight: 700;
+        color: #1a3e6f;
+    }
+    .taux-bar-bg {
+        background: #e9ecef;
+        border-radius: 3px;
+        height: 14px;
+        overflow: hidden;
+        margin-top: 0.15cm;
+    }
+    .taux-bar-fill {
+        height: 100%;
+    }
+    .ok     { background: #2f9e44; }
+    .warn   { background: #f08c00; }
+    .danger { background: #e03131; }
+    .masse-box {
+        border: 1px solid #ddd;
+        background: #f8f9fa;
+        padding: 0.3cm 0.4cm;
+        margin-top: 0.3cm;
+        font-size: 10pt;
+    }
+    .footer-note {
+        margin-top: 1cm;
+        font-size: 8pt;
+        color: #999;
+    }
+</style>
+</head>
+<body>
+    <h1>Note de calcul — Portique métallique</h1>
+    <div class="subtitle">Instanote26 — généré le {{ date_du_jour }}</div>
+
+    <h2>Hypothèses</h2>
+    <table class="kv-table">
+        <tr><td>Hauteur poteau</td><td>{{ "%.2f"|format(hpot) }} m</td></tr>
+        <tr><td>Portée</td><td>{{ "%.2f"|format(portee) }} m</td></tr>
+        <tr><td>Pente toiture</td><td>{{ "%.0f"|format(pente_pct) }} %</td></tr>
+        <tr><td>Entraxe portiques</td><td>{{ "%.2f"|format(entraxe) }} m</td></tr>
+        <tr><td>Longueur bâtiment</td><td>{{ "%.2f"|format(longueur) }} m</td></tr>
+        <tr><td>Hauteur acrotère</td><td>{{ "%.2f"|format(h_acro) }} m</td></tr>
+        <tr><td>Charge couverture</td><td>{{ couv }} daN/m²</td></tr>
+        <tr><td>Charges diverses</td><td>{{ divers }} daN/m²</td></tr>
+        <tr>
+            <td>Commune</td>
+            <td>{{ nom_commune }}{% if ancien_nom_comm %} (anciennement {{ ancien_nom_comm }}){% endif %}</td>
+        </tr>
+        <tr><td>Département</td><td>{{ departement }}</td></tr>
+        <tr><td>Altitude</td><td>{{ altitude }} m NGF</td></tr>
+        <tr><td>Catégorie de terrain</td><td>{{ rugosite_label }}</td></tr>
+    </table>
+
+    <h2>Schéma du portique</h2>
+    <div class="schema-wrap">
+        {{ svg_markup | safe }}
+    </div>
+
+    <h2>Sections retenues</h2>
+    <div class="sections-row">
+        <div class="section-box">
+            <div class="label">Poteau</div>
+            <div class="value">{{ result.poteau }}</div>
+        </div>
+        <div class="section-box">
+            <div class="label">Traverse / arbalétrier</div>
+            <div class="value">{{ result.traverse }}</div>
+        </div>
+    </div>
+
+    <h2>État limite de service (déplacements)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Critère</th>
+                <th>Valeur</th>
+                <th>Limite réglementaire</th>
+                <th>Ratio atteint</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Flèche faîtière</td>
+                <td>{{ result.fleche }} mm</td>
+                <td>L / 200</td>
+                <td>L / {{ result.ratio_fleche }}</td>
+            </tr>
+            <tr>
+                <td>Dérive tête poteau (max)</td>
+                <td>{{ result.depl_tete_pot }} mm</td>
+                <td>H / 150</td>
+                <td>H / {{ result.ratio_depl }}</td>
+            </tr>
+            <tr>
+                <td>Dérive tête poteau — gauche</td>
+                <td>{{ result.deplacement_gauche }} mm</td>
+                <td>—</td>
+                <td>—</td>
+            </tr>
+            <tr>
+                <td>Dérive tête poteau — droite</td>
+                <td>{{ result.deplacement_droite }} mm</td>
+                <td>—</td>
+                <td>—</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>État limite ultime (contraintes)</h2>
+    {% set taux = result.taux_trav | float %}
+    <div>
+        Taux de travail maximal : <strong>{{ taux | round(1) }} %</strong>
+        <div class="taux-bar-bg">
+            <div class="taux-bar-fill {{ 'ok' if taux <= 75 else ('warn' if taux <= 90 else 'danger') }}"
+                 style="width: {{ [taux, 100] | min }}%;"></div>
+        </div>
+    </div>
+
+    {% set surface = (geom.portee / 100) * (geom.longueur / 100) %}
+    <div class="masse-box">
+        <strong>Masse estimée de l'ossature (portique seul) :</strong>
+        {{ result.masse | round(0) | int }} kg
+        {% if surface > 0 %}
+        <span style="color:#777;">≈ {{ (result.masse / surface) | round(1) }} kg/m²</span>
+        {% endif %}
+    </div>
+
+    <div class="footer-note">
+        Document généré automatiquement par Instanote26 — à vérifier par un bureau d'études avant exécution.
+    </div>
+</body>
+</html>

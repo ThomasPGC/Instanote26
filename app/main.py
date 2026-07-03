@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import calcul
+from app.routers import calcul, pdf_test
 
 app = FastAPI(title="Instanote — Calcul charpente métallique")
 
@@ -10,6 +10,7 @@ templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(calcul.router)
+app.include_router(pdf_test.router)
 
 
 @app.get("/")

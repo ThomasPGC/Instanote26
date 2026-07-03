@@ -6,11 +6,14 @@ if str(_BUSINESS) not in sys.path:
     sys.path.insert(0, str(_BUSINESS))
 
 import asyncio
+import re
+from datetime import date
 
 import httpx
 from fastapi import APIRouter, Form, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
+from weasyprint import HTML
 
 import calcport
 import lecture_ipe_csv
@@ -161,5 +164,102 @@ async def htmx_calcul(
             "geom": geom,
             "pente_pct": pente_pct,
             "entraxe": entraxe,
+        },
+    )
+
+
+def _prepare_svg_for_pdf(svg_markup: str, target_width_px: int = 640) -> str:
+    """WeasyPrint ignore le `width="100%"` / `style="...aspect-ratio...height:auto..."`
+    utilisés pour le rendu temps réel dans le navigateur (svg minuscule, mal
+    positionné) : on force donc des attributs width/height en pixels calculés à
+    partir du viewBox, en remplacement du style et du width d'origine."""
+    if not svg_markup:
+        return svg_markup
+    vb_match = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg_markup)
+    vb_w, vb_h = (float(vb_match.group(1)), float(vb_match.group(2))) if vb_match else (560.0, 250.0)
+    target_height_px = round(target_width_px * vb_h / vb_w)
+
+    svg_markup = re.sub(r'\sstyle="[^"]*"', '', svg_markup, count=1)
+    svg_markup = re.sub(r'\swidth="[^"]*"', '', svg_markup, count=1)
+    return svg_markup.replace(
+        "<svg ", f'<svg width="{target_width_px}" height="{target_height_px}" ', 1
+    )
+
+
+@router.post("/htmx/calcul-pdf")
+async def calcul_pdf(
+    request: Request,
+    hpot: float = Form(...),
+    portee: float = Form(...),
+    pente_pct: float = Form(...),
+    longueur: float = Form(...),
+    entraxe: float = Form(...),
+    h_acro: float = Form(0.0),
+    departement: str = Form(...),
+    nom_commune: str = Form(...),
+    ancien_nom_comm: str = Form(""),
+    altitude: int = Form(...),
+    rugosite: str = Form(...),
+    couv: float = Form(...),
+    divers: float = Form(...),
+    svg_markup: str = Form(""),
+):
+    """Recalcule (le résultat n'est pas conservé côté serveur entre le calcul htmx et
+    l'export) et génère la note de calcul en PDF, en mémoire (pas d'écriture disque).
+    Le schéma est le SVG affiché à l'écran au moment du clic, transmis tel quel par le
+    formulaire dédié #pdf-form (cf. static/js/portique.js, preparePdfForm())."""
+    geom = {
+        "hpot":     round(hpot * 100),
+        "portee":   round(portee * 100),
+        "pente":    pente_pct / 100,
+        "longueur": round(longueur * 100),
+        "entraxe":  round(entraxe * 100),
+        "h_acro":   round(h_acro * 100),
+    }
+    localisation = {
+        "nom_commune":     nom_commune.strip(),
+        "ancien_nom_comm": ancien_nom_comm.strip(),
+        "departement":     departement.strip(),
+        "altitude":        altitude,
+        "rugosite":        rugosite,
+    }
+    cp = {"couv": couv, "divers": divers}
+
+    result, status = calcport.charge_et_sections(geom, localisation, cp)
+    if status != "OK":
+        return HTMLResponse(
+            f"<p>Impossible de générer le PDF : {result.get('poteau', status)}</p>",
+            status_code=422,
+        )
+
+    rugosite_label = dict(RUGOSITES).get(rugosite, rugosite)
+    svg_markup = _prepare_svg_for_pdf(svg_markup)
+
+    html_string = templates.get_template("calcul/pdf_result.html").render(
+        request=request,
+        date_du_jour=date.today().strftime("%d/%m/%Y"),
+        result=result,
+        geom=geom,
+        hpot=hpot,
+        portee=portee,
+        pente_pct=pente_pct,
+        longueur=longueur,
+        entraxe=entraxe,
+        h_acro=h_acro,
+        nom_commune=nom_commune,
+        ancien_nom_comm=ancien_nom_comm,
+        departement=departement,
+        altitude=altitude,
+        rugosite_label=rugosite_label,
+        couv=couv,
+        divers=divers,
+        svg_markup=svg_markup,
+    )
+    pdf_bytes = HTML(string=html_string, base_url=str(request.base_url)).write_pdf()
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="note-calcul-instanote26.pdf"'
         },
     )

@@ -172,6 +172,10 @@
 
   <div class="mt-4 d-flex align-items-center gap-3">
     <button type="submit" class="btn btn-primary btn-lg px-5">Calculer</button>
+    <button type="submit" id="btn-pdf" form="pdf-form" class="btn btn-outline-secondary btn-lg px-4"
+            onclick="preparePdfForm()" disabled title="Disponible après un calcul réussi">
+      Télécharger le PDF
+    </button>
     <span id="spinner" class="htmx-indicator spinner-border spinner-border-sm text-primary" role="status">
       <span class="visually-hidden">Calcul en cours…</span>
     </span>
@@ -180,6 +184,27 @@
 </form>
 
 <div id="resultat" class="mt-4"></div>
+
+{# Formulaire dédié à l'export PDF — hors du flux htmx du formulaire de calcul, soumission
+   navigateur classique (pas d'ajax) pour que le téléchargement du PDF fonctionne nativement.
+   Rempli juste avant soumission par preparePdfForm() (static/js/portique.js) à partir des
+   valeurs courantes du formulaire de calcul + du schéma SVG affiché à l'écran. #}
+<form id="pdf-form" method="post" action="/htmx/calcul-pdf" class="d-none">
+  <input type="hidden" name="hpot" id="pdf-hpot">
+  <input type="hidden" name="portee" id="pdf-portee">
+  <input type="hidden" name="pente_pct" id="pdf-pente_pct">
+  <input type="hidden" name="longueur" id="pdf-longueur">
+  <input type="hidden" name="entraxe" id="pdf-entraxe">
+  <input type="hidden" name="h_acro" id="pdf-h_acro">
+  <input type="hidden" name="departement" id="pdf-departement">
+  <input type="hidden" name="nom_commune" id="pdf-nom_commune">
+  <input type="hidden" name="ancien_nom_comm" id="pdf-ancien_nom_comm">
+  <input type="hidden" name="altitude" id="pdf-altitude">
+  <input type="hidden" name="rugosite" id="pdf-rugosite">
+  <input type="hidden" name="couv" id="pdf-couv">
+  <input type="hidden" name="divers" id="pdf-divers">
+  <input type="hidden" name="svg_markup" id="pdf-svg-markup">
+</form>
 
 <script src="/static/js/portique.js"></script>
 {% endblock %}
