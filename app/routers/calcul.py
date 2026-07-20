@@ -151,7 +151,21 @@ async def htmx_calcul(
     }
     cp = {"couv": couv, "divers": divers}
 
+    if calcport.AUDIT_MODE:
+        print(f"\n[AUDIT WEB] POST /htmx/calcul reçu — form brut : hpot={hpot} portee={portee} "
+              f"pente_pct={pente_pct} longueur={longueur} entraxe={entraxe} h_acro={h_acro} "
+              f"departement={departement!r} nom_commune={nom_commune!r} "
+              f"ancien_nom_comm={ancien_nom_comm!r} altitude={altitude} rugosite={rugosite!r} "
+              f"couv={couv} divers={divers}")
+        print(f"[AUDIT WEB] geom envoyé à charge_et_sections() = {geom}")
+        print(f"[AUDIT WEB] localisation envoyée = {localisation}")
+        print(f"[AUDIT WEB] cp envoyé = {cp}")
+
     result, status = calcport.charge_et_sections(geom, localisation, cp)
+
+    if calcport.AUDIT_MODE:
+        print(f"[AUDIT WEB] statut={status} résultat={result}")
+
     is_error = status != "OK"
 
     return templates.TemplateResponse(

@@ -21,8 +21,9 @@ repère global: axe X horizontal, croissant de la gauche vers la droite
 from math import sqrt, atan, pi, cos, sin
 import time
 import logging
-import pprint 
+import pprint
 import pathlib
+import os
 import numpy as np
 from lecture_ipe_csv import Tuple_tous_ipe
 import chargement_nv as chnv
@@ -30,6 +31,11 @@ import chargement_nv as chnv
 E = 2100000  # daN/cm²
 IPE = Tuple_tous_ipe()
 # print("Premier IPE de la liste : ", IPE.donnees[0]["Nom"])
+
+# [AUDIT] Active l'instrumentation temporaire de diagnostic (audit_section_forcee
+# et impressions détaillées) sans toucher au comportement de calcul par défaut.
+# Désactivé par défaut : AUDIT_MODE=1 dans l'environnement pour l'activer.
+AUDIT_MODE = os.environ.get("AUDIT_MODE") == "1"
 
 
 GEOMTEST = {"hpot": 400, "portee": 1600, "pente": 0.25, "longueur": 2400,
@@ -215,7 +221,7 @@ de fin et une section (IPE 200 etc.)"""
         self.calc_KL_ij()
 
 
-def calcport(A, B, K, F, cas=CHARGETEST[2], lim_fy=235):
+def calcport(A, B, K, F, cas=CHARGETEST[2], lim_fy=235, debug_capture=None):
     """fonction principale de calcul des déplacements et des efforts internes
 
     entrées:
@@ -280,6 +286,11 @@ def calcport(A, B, K, F, cas=CHARGETEST[2], lim_fy=235):
     D_avec_app = np.insert(D_avec_app, len(D_avec_app) - 1, 0)
 
     # F_tot = np.add(-F.flatten(), np.dot(K,D_avec_app))
+
+    # [AUDIT] capture optionnelle du vecteur déplacements complet (tous noeuds),
+    # sans effet quand debug_capture est None (comportement par défaut inchangé)
+    if debug_capture is not None:
+        debug_capture["D_avec_app"] = D_avec_app.copy()
 
     return calculer_et_verifier_resultats(B, D_avec_app)
 
@@ -496,22 +507,36 @@ def optimise_IPE(geom=GEOMTEST, charges=CHARGETEST):
     ipe_pot = IPE.trouve_decal(ipe_trou, -2)
     ipe_arba = IPE.trouve_decal(ipe_trou, -4)
     # print("IPE démarrage recherche : ", ipe_pot, ipe_arba)
+    if AUDIT_MODE:
+        print(f"\n[AUDIT OPTI] Prédimensionnement : ch_max_arb={ch_max_arb:.3f} daN/cm, "
+              f"wpl_min={wpl_min:.1f} cm3, ipe_trou={ipe_trou} "
+              f"-> départ boucle : poteau={ipe_pot}, traverse={ipe_arba}")
+        print(f"[AUDIT OPTI] Seuils : tête_g<{critere_tete_g * 10:.2f}mm, "
+              f"tête_d<{critere_tete_d * 10:.2f}mm, flèche<{critere_fleche * 10:.2f}mm, taux<=100%")
     A, B = def_noeud_barres(geom, ipe_pot, ipe_arba)
     list_matr_F = []
     for cas in charges:
         list_matr_F.append(crea_matrice_force(len(A), B, cas))
 
     comp_crit = False
+    _audit_iter = 0
 
     while not comp_crit:
 
         resultats_non_pond = []
+        _audit_iter += 1
 
         if ipe_arba == "IPE 600":
+            if AUDIT_MODE:
+                print(f"[AUDIT OPTI] Itération {_audit_iter} — traverse atteint IPE 600 "
+                      f"-> PasDeSolutionIPE levée")
             raise PasDeSolutionIPE(
                 "Aucun profil IPE du catalogue ne satisfait les critères "
                 "de flèche/déplacement/résistance pour cette géométrie et ce chargement."
             )
+
+        _audit_pot_avant, _audit_arba_avant = ipe_pot, ipe_arba
+        _audit_branche_egalite = (ipe_arba == ipe_pot)
 
         if ipe_arba == ipe_pot:
             ipe_pot = IPE.trouve_decal(ipe_pot, 1)
@@ -519,6 +544,12 @@ def optimise_IPE(geom=GEOMTEST, charges=CHARGETEST):
 
         else:
             ipe_arba = IPE.trouve_decal(ipe_arba, 1)
+
+        if AUDIT_MODE:
+            branche = "BUMP POTEAU + RESET TRAVERSE (pot-4)" if _audit_branche_egalite \
+                else "INCREMENT TRAVERSE SEULE"
+            print(f"[AUDIT OPTI] Itération {_audit_iter} — avant=({_audit_pot_avant},{_audit_arba_avant}) "
+                  f"branche={branche} -> candidat testé = (poteau={ipe_pot}, traverse={ipe_arba})")
 
         # print("IPE pour entrée calcport : ", ipe_pot, ipe_arba)
 
@@ -568,6 +599,7 @@ def optimise_IPE(geom=GEOMTEST, charges=CHARGETEST):
                     fleche_max = abs(fleche_de_combi)
 
         comp_eff = True
+        _audit_depassements = []
 
         for cas_vent in resultats_non_pond[3:]:
 
@@ -604,6 +636,8 @@ def optimise_IPE(geom=GEOMTEST, charges=CHARGETEST):
                         # print(ipe_pot, ipe_arba)
                         # print ("ens resu apres contrainte ",round(valeur,2), " pour ", nom)
                         comp_eff = False
+                        if AUDIT_MODE:
+                            _audit_depassements.append((cas_vent[0], combi, nom, valeur))
                     elif abs(valeur) > taux_max:
                         taux_max = abs(valeur)
 
@@ -617,6 +651,29 @@ def optimise_IPE(geom=GEOMTEST, charges=CHARGETEST):
         # print (comp_crit_t_g)
 
         # print("Taux de contrainte max : {:5.2f}".format(taux_max))
+
+        if AUDIT_MODE:
+            ok_g = depl_max_tete_g < critere_tete_g
+            ok_d = depl_max_tete_d < critere_tete_d
+            ok_f = fleche_max < critere_fleche
+            decision = "RETENUE -> arrêt boucle" if comp_crit else "REJETEE -> itération suivante"
+            print(f"[AUDIT OPTI] Itération {_audit_iter} résultat : "
+                  f"poteau={ipe_pot} traverse={ipe_arba} | "
+                  f"tête_g={depl_max_tete_g * 10:6.2f}mm {'OK ' if ok_g else 'FAIL'} "
+                  f"(seuil {critere_tete_g * 10:.2f}) | "
+                  f"tête_d={depl_max_tete_d * 10:6.2f}mm {'OK ' if ok_d else 'FAIL'} "
+                  f"(seuil {critere_tete_d * 10:.2f}) | "
+                  f"flèche={fleche_max * 10:6.2f}mm {'OK ' if ok_f else 'FAIL'} "
+                  f"(seuil {critere_fleche * 10:.2f}) | "
+                  f"taux_max={taux_max * 100:5.1f}% comp_eff={comp_eff} | "
+                  f"comp_crit={comp_crit} -> {decision}")
+            for nom_vent, combi, nom_tx, val in _audit_depassements:
+                print(f"    [AUDIT OPTI]   dépassement taux : {nom_tx}={val * 100:.1f}% "
+                      f"(cas vent={nom_vent}, combi ELU={combi})")
+
+    if AUDIT_MODE:
+        print(f"\n[AUDIT OPTI] ===> Section finale retenue par la boucle : "
+              f"poteau={ipe_pot} / traverse={ipe_arba} après {_audit_iter} itération(s)\n")
 
     return dict(poteau=ipe_pot, traverse=ipe_arba,
                 fleche=round(fleche_max * 10, 1),
@@ -664,6 +721,211 @@ def charge_et_sections(geom=GEOMTEST, localisation=LOCALITEST, cp=CPTEST):
                            "— nous contacter pour une étude spécifique"}, None
     except Exception as e:
         return {"poteau": "problème de calcul"}, e
+
+
+# ============================================================================
+# [AUDIT] Instrumentation temporaire de diagnostic — session d'audit du moteur
+# de calcul (comparaison Cype/Portal+). Purement lecture/affichage : n'appelle
+# que les fonctions de calcul existantes, sans en modifier une seule ligne, et
+# n'a aucun effet quand AUDIT_MODE=0 (défaut). À retirer une fois l'audit clos.
+# ============================================================================
+
+_NOMS_BARRES = ["Poteau G (0-1)", "Jarret G (1-2)", "Traverse G (2-3)",
+                "Traverse D (3-4)", "Jarret D (4-5)", "Poteau D (5-6)"]
+
+_NOMS_DOF = ["dx", "dy", "rot"]
+
+_CLES_TAUX = ["tx_mom_pot_g", "tx_mom_renf_g", "tx_mom_pied_arba_g", "tx_mom_fait",
+              "tx_mom_pied_arba_d", "tx_mom_renf_d", "tx_mom_pot_d",
+              "tx_cis_pot_g", "tx_cis_renf_g", "tx_cis_pied_arba_g",
+              "tx_cis_pied_arba_d", "tx_cis_renf_d", "tx_cis_pot_d"]
+
+
+def _audit_zone_et_charges(geom, localisation, cp):
+    """[AUDIT] Reproduit l'orchestration (zonage + assemblage des charges
+    caractéristiques) de charge_et_sections(), sans passer par optimise_IPE, pour
+    pouvoir forcer une section. N'appelle chargement_nv que via ses fonctions
+    publiques existantes, inchangées."""
+    canton = chnv.trouve_canton(localisation["departement"], localisation["nom_commune"],
+                                localisation["ancien_nom_comm"])
+    zones = chnv.trouve_zones_NV(localisation["departement"], canton)
+    cp_arba = -(cp["couv"] + cp["divers"] + 7) * geom["entraxe"] / 10000
+    charges_calc = [("CP_", [0, cp_arba, cp_arba, cp_arba, cp_arba, 0], [0] * 21)] \
+        + chnv.charge_neige(zones[0], localisation["altitude"], geom) \
+        + chnv.charge_vent(zones[1], localisation["rugosite"], geom)
+    return charges_calc
+
+
+def _audit_print_charges(label, charges_calc):
+    print(f"\n===== [AUDIT {label}] Charges caractéristiques par barre "
+          f"(avant pondération, daN/cm linéaire) =====")
+    print(f"{'Cas':<18}" + "".join(f"{n:<18}" for n in _NOMS_BARRES))
+    for nom, ch_barres, ch_noeuds in charges_calc:
+        print(f"{nom:<18}" + "".join(f"{v:<18.4f}" for v in ch_barres))
+
+    print(f"\n----- [AUDIT {label}] Charges ponctuelles par noeud "
+          f"(avant pondération, daN / daN.cm) -----")
+    print(f"{'Cas':<18}" + "".join(f"N{n}.{d:<8}" for n in range(7) for d in _NOMS_DOF))
+    for nom, ch_barres, ch_noeuds in charges_calc:
+        print(f"{nom:<18}" + "".join(f"{v:<11.1f}" for v in ch_noeuds))
+
+
+def _audit_efforts_snapshot(B):
+    """[AUDIT] Instantané des efforts [Ni,Vi,Mi,Nj,Vj,Mj] par barre juste après un
+    calcport(), avant que le cas suivant n'écrase barre.efforts_noeuds."""
+    return [np.array(barre.efforts_noeuds).flatten().copy() for barre in B]
+
+
+def _audit_print_cas(label, nom_cas, ens_resu, D_avec_app, efforts_par_barre):
+    print(f"\n----- [AUDIT {label}] Cas caractéristique : {nom_cas} -----")
+    print(f"{'Barre':<18}{'Ni(daN)':>12}{'Vi(daN)':>12}{'Mi(daN.cm)':>14}"
+          f"{'Nj(daN)':>12}{'Vj(daN)':>12}{'Mj(daN.cm)':>14}")
+    for nom, eff in zip(_NOMS_BARRES, efforts_par_barre):
+        print(f"{nom:<18}{eff[0]:>12.1f}{eff[1]:>12.1f}{eff[2]:>14.1f}"
+              f"{eff[3]:>12.1f}{eff[4]:>12.1f}{eff[5]:>14.1f}")
+
+    print(f"\n{'Noeud':<8}{'dx (mm)':>12}{'dy (mm)':>12}{'rot (mrad)':>14}")
+    for n in range(7):
+        dx, dy, rot = D_avec_app[n * 3] * 10, D_avec_app[n * 3 + 1] * 10, D_avec_app[n * 3 + 2] * 10
+        print(f"N{n:<7}{dx:>12.3f}{dy:>12.3f}{rot:>14.3f}")
+
+    print(f"\nDéplacements clés (mm) : tête poteau G = {ens_resu['depl_t_p_g'] * 10:.2f}"
+          f" | tête poteau D = {ens_resu['depl_t_p_d'] * 10:.2f}"
+          f" | flèche faîtage = {ens_resu['fleche_fait'] * 10:.2f}")
+
+    print("Taux de travail (non pondérés, cas seul) :")
+    for cle in _CLES_TAUX:
+        print(f"  {cle:<20} {ens_resu[cle] * 100:>8.2f} %")
+
+
+def _audit_print_combos(label, resultats_cas):
+    """[AUDIT] Reproduit EXACTEMENT le regroupement/pondération de optimise_IPE()
+    (mêmes COMBI_DEPL/COMBI_EFF, mêmes triplet_cas/quatu_cas, même indexation
+    resultats[:2]/[:3]/[3:]) pour afficher le détail de chaque combinaison. Copie
+    en lecture seule : n'influence pas et ne modifie pas optimise_IPE()."""
+    COMBI_DEPL = [(1, 1, 0), (1, 1, .6), (1, 0, 1), (1, 0.5, 1)]
+    COMBI_EFF = [(1.35, 1.5, 0, 0), (1.35, 1.5, 0, .9), (1.35, 0, 0, 1.5),
+                 (1, 0, 0, 1.5), (1.35, 0.75, 0, 1.5), (1, 0, 1, 0)]
+
+    depl_max_tete_g = depl_max_tete_d = fleche_max = 0
+    lignes_depl = []
+
+    for cas_vent in resultats_cas[3:]:
+        triplet_cas = resultats_cas[:2] + [cas_vent]
+        for combi in COMBI_DEPL:
+            depl_g = depl_d = fleche = 0
+            for j, cas in enumerate(triplet_cas):
+                depl_g += cas[1]["depl_t_p_g"] * combi[j]
+                depl_d += cas[1]["depl_t_p_d"] * combi[j]
+                fleche += cas[1]["fleche_fait"] * combi[j]
+            lignes_depl.append((cas_vent[0], combi, depl_g, depl_d, fleche))
+            depl_max_tete_g = max(depl_max_tete_g, abs(depl_g))
+            depl_max_tete_d = max(depl_max_tete_d, abs(depl_d))
+            fleche_max = max(fleche_max, abs(fleche))
+
+    print(f"\n===== [AUDIT {label}] Combinaisons ELS (déplacements) =====")
+    print(f"{'Vent':<18}{'Combi(G,N,W)':<16}{'depl_tete_g(mm)':>16}"
+          f"{'depl_tete_d(mm)':>16}{'fleche_fait(mm)':>16}")
+    for nom_vent, combi, depl_g, depl_d, fleche in lignes_depl:
+        marq = []
+        if abs(depl_g) == depl_max_tete_g:
+            marq.append("<-gouv.tete_g")
+        if abs(depl_d) == depl_max_tete_d:
+            marq.append("<-gouv.tete_d")
+        if abs(fleche) == fleche_max:
+            marq.append("<-gouv.fleche")
+        print(f"{nom_vent:<18}{str(combi):<16}{depl_g * 10:>16.3f}"
+              f"{depl_d * 10:>16.3f}{fleche * 10:>16.3f}  {' '.join(marq)}")
+
+    print(f"\n=> retenus : tête G = {depl_max_tete_g * 10:.2f} mm | "
+          f"tête D = {depl_max_tete_d * 10:.2f} mm | "
+          f"flèche faîtage = {fleche_max * 10:.2f} mm")
+
+    lignes_eff = []
+    taux_max_global = {cle: 0 for cle in _CLES_TAUX}
+    depasse = False
+
+    for cas_vent in resultats_cas[3:]:
+        quatu_cas = resultats_cas[:3] + [cas_vent]
+        for combi in COMBI_EFF:
+            dico_taux_cum = {cle: 0 for cle in _CLES_TAUX}
+            for i, cas in enumerate(quatu_cas):
+                for cle, res in cas[1].items():
+                    if cle in dico_taux_cum:
+                        dico_taux_cum[cle] += res * combi[i]
+            for cle, val in dico_taux_cum.items():
+                if abs(val) > abs(taux_max_global[cle]):
+                    taux_max_global[cle] = val
+                if abs(val) > 1:
+                    depasse = True
+            lignes_eff.append((cas_vent[0], combi, dico_taux_cum))
+
+    print(f"\n===== [AUDIT {label}] Combinaisons ELU (taux de travail, %) =====")
+    print(f"{'Vent':<18}{'Combi(G,N,Nacc,W)':<24}" + "".join(f"{c:<11}" for c in _CLES_TAUX))
+    for nom_vent, combi, dico in lignes_eff:
+        ligne = f"{nom_vent:<18}{str(combi):<24}"
+        for cle in _CLES_TAUX:
+            marq = "*" if dico[cle] == taux_max_global[cle] else " "
+            ligne += f"{dico[cle] * 100:>9.1f}{marq}"
+        print(ligne)
+
+    print("\nTaux gouvernants (%), '*' ci-dessus = valeur retenue par colonne :")
+    for cle in _CLES_TAUX:
+        alerte = "  >>> DEPASSEMENT" if abs(taux_max_global[cle]) > 1 else ""
+        print(f"  {cle:<20} {taux_max_global[cle] * 100:>8.2f} %{alerte}")
+    if depasse:
+        print(f"\n[AUDIT {label}] Au moins un taux de travail dépasse 100% pour cette section forcée.")
+
+    return dict(depl_max_tete_g=depl_max_tete_g, depl_max_tete_d=depl_max_tete_d,
+                fleche_max=fleche_max, taux_max_global=taux_max_global)
+
+
+def audit_section_forcee(geom, localisation, cp, poteau, arba, label="AUDIT"):
+    """[AUDIT / TEMPORAIRE] Calcule tous les cas caractéristiques (G, N, W) et
+    toutes les combinaisons ELS/ELU pour une section poteau/traverse FORCEE,
+    en court-circuitant la boucle d'optimisation de optimise_IPE() (qui, elle,
+    choisit la section automatiquement). Utilise exactement les mêmes fonctions
+    bas niveau (def_noeud_barres, crea_matrice_rigidite, crea_matrice_force,
+    calcport) que le calcul réel — aucune logique de calcul modifiée.
+    Nécessite AUDIT_MODE=1 dans l'environnement.
+    """
+    if not AUDIT_MODE:
+        raise RuntimeError("audit_section_forcee() nécessite la variable d'environnement "
+                            "AUDIT_MODE=1 (outil de diagnostic temporaire).")
+
+    print(f"\n{'#' * 100}\n[AUDIT {label}] Section forcée : "
+          f"poteau={poteau} / traverse={arba}\n{'#' * 100}")
+
+    charges_calc = _audit_zone_et_charges(geom, localisation, cp)
+    _audit_print_charges(label, charges_calc)
+
+    A, B = def_noeud_barres(geom, poteau, arba)
+    K = crea_matrice_rigidite(A, B)
+
+    resultats_cas = []
+    for cas in charges_calc:
+        F = crea_matrice_force(len(A), B, cas)
+        capture = {}
+        ens_resu = calcport(A, B, K, F, cas, debug_capture=capture)
+        efforts = _audit_efforts_snapshot(B)
+        _audit_print_cas(label, cas[0], ens_resu, capture["D_avec_app"], efforts)
+        resultats_cas.append((cas[0], ens_resu))
+
+    synth = _audit_print_combos(label, resultats_cas)
+
+    masse = round(IPE.trouve_val(poteau, "G") * geom["hpot"] * 0.02
+                  + IPE.trouve_val(arba, "G") * geom["portee"] * 0.5 * 0.022
+                  / cos(atan(geom["pente"])))
+    taux_max_abs = max(abs(v) for v in synth["taux_max_global"].values())
+    print(f"\n[AUDIT {label}] Synthèse section {poteau} / {arba} : "
+          f"flèche faîtage = {synth['fleche_max'] * 10:.1f} mm | "
+          f"déplacement tête poteau max = "
+          f"{max(synth['depl_max_tete_g'], synth['depl_max_tete_d']) * 10:.1f} mm | "
+          f"taux de travail max = {taux_max_abs * 100:.1f} % | "
+          f"masse estimée = {masse} kg")
+    print(f"{'#' * 100}\n")
+
+    return dict(charges_calc=charges_calc, resultats_cas=resultats_cas, synthese=synth)
 
 
 if __name__ == "__main__":
