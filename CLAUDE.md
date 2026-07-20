@@ -14,6 +14,35 @@
 - SQLite (dev) → PostgreSQL (prod)
 - Déploiement : Railway.app
 
+## Déploiement (Railway)
+- Service Railway connecté à la branche `master` du repo GitHub, déploiement
+  automatique à chaque push sur cette branche.
+- Builder : Railpack (successeur de Nixpacks, standard actuel Railway —
+  config dans `railpack.json` à la racine, voir section Export PDF plus bas
+  pour le détail des paquets apt).
+- Variables d'environnement configurées sur Railway (Settings > Variables) :
+  **aucune variable custom à ce jour**. Railway a seulement détecté
+  `AUDIT_MODE` comme variable suggérée (présente dans le code), mais elle
+  n'a jamais été ajoutée — l'instrumentation d'audit reste donc désactivée
+  en prod par défaut, comme en local.
+- Base de données : **actuellement SQLite en fichier local sur le service
+  Railway, pas encore persistante en prod** (aucun Volume Railway attaché).
+  Concrètement : si le service redémarre (déploiement, crash, veille du plan
+  gratuit...), le fichier SQLite local est potentiellement réinitialisé et
+  toutes les données utilisateurs (comptes créés via fastapi-users) seraient
+  perdues. **Point bloquant à traiter avant de merger la branche
+  `feature/auth-fastapi-users`** — soit attacher un Volume Railway au
+  fichier SQLite, soit migrer vers l'addon PostgreSQL Railway (prévu de
+  toute façon à terme, cf. `app/database.py`).
+- Variables d'environnement supplémentaires nécessaires **quand la branche
+  auth sera mergée** (pas encore définies sur Railway à ce jour, voir
+  `.env.example`) : `BREVO_API_KEY`, `EMAIL_FROM`, `APP_BASE_URL`,
+  `INSTANOTE26_AUTH_SECRET`.
+- Nom de domaine : pas encore branché sur Railway. Prévu plus tard
+  (insta-note.com), avec une bascule DNS à faire depuis l'ancien site Dokos.
+- Région : pas encore vérifiée ni choisie explicitement — à faire une fois
+  passé sur le plan Hobby.
+
 ## Structure
 - app/main.py : point d'entrée FastAPI
 - app/routers/ : les endpoints
