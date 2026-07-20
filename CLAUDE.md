@@ -152,6 +152,43 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   etc.), aucune dépendance aux classes de grille → resterait à vérifier si un futur
   changement de layout modifie/supprime ces id
 
+### Instrumentation de diagnostic AUDIT_MODE (business/calcport.py + app/routers/calcul.py)
+- Contexte : audit du moteur de calcul (comparaison Cype/Portal+) et de la boucle
+  d'optimisation de sections IPE, suite à un résultat massivement surdimensionné
+  (IPE 400/400) observé sur une ancienne infrastructure externe (celle dont on
+  cherche à sortir). **Non reproduit en local sur cette base de code** : moteur
+  physique et boucle d'optimisation vérifiés corrects (convergent vers IPE
+  300/270 sur le cas testé, cohérent avec l'attendu métier) — le problème
+  observé était propre à l'ancienne infra, pas à ce code.
+- Activation : variable d'environnement `AUDIT_MODE=1` (absente/à "0" par
+  défaut → aucun effet sur le comportement normal, entièrement désactivé).
+- `business/calcport.py` :
+  - `audit_section_forcee(geom, localisation, cp, poteau, arba, label)` :
+    calcule tous les cas caractéristiques (G, N, W) et toutes les combinaisons
+    ELS/ELU pour une section poteau/traverse **imposée** (court-circuite la
+    boucle de `optimise_IPE()`) — tableaux détaillés : charges par barre/noeud
+    avant pondération, efforts N/V/M par barre et par cas, déplacements par
+    noeud, taux de travail par combinaison pondérée avec la valeur retenue.
+  - `optimise_IPE()` : instrumentation additive uniquement (aucune ligne de
+    logique de calcul/optimisation modifiée) qui affiche, à chaque itération de
+    la boucle : la section testée, la branche empruntée ("incrément traverse
+    seule" vs "bump poteau + reset traverse à poteau-4"), le résultat détaillé
+    de chaque critère (tête G/D, flèche, taux) et si la section est retenue ou
+    rejetée.
+  - `calcport()` : paramètre optionnel `debug_capture` (dict, `None` par
+    défaut) pour récupérer le vecteur déplacements complet de tous les noeuds ;
+    sans effet si non fourni, donc aucun changement pour les appels existants.
+- `app/routers/calcul.py` (`POST /htmx/calcul`) : log, gated par
+  `calcport.AUDIT_MODE`, du payload brut reçu du formulaire, du
+  `geom`/`localisation`/`cp` effectivement construits et envoyés à
+  `charge_et_sections()`, et du résultat retourné — permet de comparer les
+  entrées/sorties d'une vraie requête web à un cas de référence.
+- Usage : positionner `AUDIT_MODE=1` dans l'environnement avant de lancer le
+  serveur (ou un script Python qui importe `calcport` directement), reproduire
+  le cas à auditer, lire les tableaux dans la sortie/les logs.
+- Volontairement laissée dans le code (désactivée par défaut) pour resservir
+  en cas de nouveau doute sur le calcul ou sur la boucle d'optimisation.
+
 ## Points en cours / prochaine session
 - mettre le focus sur l'image et les resultats de calcul
 - le calcul du poids au mètre carré est faux, trop bas. le calcul est masse d'acier divisé par l'entraxe et la portée. c'est la longueur totale du batiment qui est prise à la place de l'entraxe vraisemblablement (bug repris tel quel dans templates/calcul/pdf_result.html, pas corrigé lors de l'ajout du PDF)
