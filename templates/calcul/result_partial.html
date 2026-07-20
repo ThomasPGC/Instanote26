@@ -18,7 +18,7 @@
 
 <div class="card border-success">
   <div class="card-header bg-success text-white fw-semibold fs-5">
-    Résultats — Sections retenues
+    Résultats — sections retenues
   </div>
   <div class="card-body">
 
@@ -39,7 +39,7 @@
     </div>
 
     {# ── Déplacements ELS ── #}
-    <h6 class="text-muted text-uppercase mb-2">État limite de service (déplacements)</h6>
+    <h6 class="text-muted text-uppercase mb-2">Déplacements</h6>
     <div class="table-responsive mb-4">
       <table class="table table-sm table-bordered mb-0">
         <thead class="table-light">
@@ -52,25 +52,25 @@
         </thead>
         <tbody>
           <tr>
-            <td>Flèche faîtière</td>
+            <td>Flèche faîtage</td>
             <td class="text-end">{{ result.fleche }} mm</td>
             <td class="text-end">L / 200</td>
             <td class="text-end fw-bold">L / {{ result.ratio_fleche }}</td>
           </tr>
           <tr>
-            <td>Dérive tête poteau (max)</td>
+            <td>Déplacement tête poteau (max)</td>
             <td class="text-end">{{ result.depl_tete_pot }} mm</td>
             <td class="text-end">H / 150</td>
             <td class="text-end fw-bold">H / {{ result.ratio_depl }}</td>
           </tr>
           <tr>
-            <td>Dérive tête poteau — gauche</td>
+            <td>Déplacement tête poteau — gauche</td>
             <td class="text-end">{{ result.deplacement_gauche }} mm</td>
             <td class="text-end">—</td>
             <td class="text-end">—</td>
           </tr>
           <tr>
-            <td>Dérive tête poteau — droite</td>
+            <td>Déplacement tête poteau — droite</td>
             <td class="text-end">{{ result.deplacement_droite }} mm</td>
             <td class="text-end">—</td>
             <td class="text-end">—</td>
@@ -80,7 +80,7 @@
     </div>
 
     {# ── Taux de travail ELU ── #}
-    <h6 class="text-muted text-uppercase mb-2">État limite ultime (contraintes)</h6>
+    <h6 class="text-muted text-uppercase mb-2">Contraintes</h6>
     <div class="mb-4">
       {% set taux = result.taux_trav | float %}
       <div class="d-flex justify-content-between small mb-1">
@@ -107,7 +107,8 @@
     </div>
 
     {# ── Masse estimée ── #}
-    {% set surface = (geom.portee / 100) * (geom.longueur / 100) %}
+    {# surface portée par UN portique = portée × entraxe (pas la longueur totale du bâtiment) #}
+    {% set surface = (geom.portee / 100) * (geom.entraxe / 100) %}
     <div class="alert alert-light border mb-0">
       <strong>Masse estimée de l'ossature (portique seul) :</strong>
       {{ result.masse | round(0) | int }} kg

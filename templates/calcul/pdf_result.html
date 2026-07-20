@@ -151,7 +151,7 @@
         </div>
     </div>
 
-    <h2>État limite de service (déplacements)</h2>
+    <h2>Déplacements</h2>
     <table>
         <thead>
             <tr>
@@ -163,25 +163,25 @@
         </thead>
         <tbody>
             <tr>
-                <td>Flèche faîtière</td>
+                <td>Flèche faîtage</td>
                 <td>{{ result.fleche }} mm</td>
                 <td>L / 200</td>
                 <td>L / {{ result.ratio_fleche }}</td>
             </tr>
             <tr>
-                <td>Dérive tête poteau (max)</td>
+                <td>Déplacement tête poteau (max)</td>
                 <td>{{ result.depl_tete_pot }} mm</td>
                 <td>H / 150</td>
                 <td>H / {{ result.ratio_depl }}</td>
             </tr>
             <tr>
-                <td>Dérive tête poteau — gauche</td>
+                <td>Déplacement tête poteau — gauche</td>
                 <td>{{ result.deplacement_gauche }} mm</td>
                 <td>—</td>
                 <td>—</td>
             </tr>
             <tr>
-                <td>Dérive tête poteau — droite</td>
+                <td>Déplacement tête poteau — droite</td>
                 <td>{{ result.deplacement_droite }} mm</td>
                 <td>—</td>
                 <td>—</td>
@@ -189,7 +189,7 @@
         </tbody>
     </table>
 
-    <h2>État limite ultime (contraintes)</h2>
+    <h2>Contraintes</h2>
     {% set taux = result.taux_trav | float %}
     <div>
         Taux de travail maximal : <strong>{{ taux | round(1) }} %</strong>
@@ -199,7 +199,8 @@
         </div>
     </div>
 
-    {% set surface = (geom.portee / 100) * (geom.longueur / 100) %}
+    {# surface portée par UN portique = portée × entraxe (pas la longueur totale du bâtiment) #}
+    {% set surface = (geom.portee / 100) * (geom.entraxe / 100) %}
     <div class="masse-box">
         <strong>Masse estimée de l'ossature (portique seul) :</strong>
         {{ result.masse | round(0) | int }} kg

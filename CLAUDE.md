@@ -220,9 +220,23 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
 
 ## Points en cours / prochaine session
 - mettre le focus sur l'image et les resultats de calcul
-- le calcul du poids au mètre carré est faux, trop bas. le calcul est masse d'acier divisé par l'entraxe et la portée. c'est la longueur totale du batiment qui est prise à la place de l'entraxe vraisemblablement (bug repris tel quel dans templates/calcul/pdf_result.html, pas corrigé lors de l'ajout du PDF)
 - vérifier `GET /test-pdf` juste après le prochain déploiement Railway pour confirmer
   que les paquets apt de `railpack.json` suffisent bien à WeasyPrint en prod
+
+## Corrigés récemment
+- **Masse au m² faux** (`templates/calcul/result_partial.html` +
+  `templates/calcul/pdf_result.html`) : la surface utilisée pour ramener la
+  masse du portique en kg/m² était `portée × longueur du bâtiment` (surface
+  totale du bâtiment) au lieu de `portée × entraxe` (surface réellement
+  portée par UN portique) — corrigé dans les deux templates
+  (`geom.longueur` → `geom.entraxe`).
+- **Libellés résultats** (mêmes templates) : "Résultats — Sections retenues"
+  → "Résultats — sections retenues" (pas de majuscule après le tiret) ;
+  "État limite de service (déplacements)" → "Déplacements" et "État limite
+  ultime (contraintes)" → "Contraintes" (l'outil fait du prédimensionnement,
+  pas une vérification complète aux états limites — titres trompeurs) ;
+  "Flèche faîtière" → "Flèche faîtage" ; "Dérive tête poteau..." →
+  "Déplacement tête poteau..." (3 occurrences par template).
 
 ## Refactoring futur (branche séparée)
 - Migration calcul vers PyNite pour géométrie variable (gestin fine des jarrets, portiques asymétriques,
