@@ -138,11 +138,14 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   - `app/base.py` : classe `Base` (SQLAlchemy `DeclarativeBase`) partagée,
     séparée pour éviter un import circulaire entre `database.py` et
     `models/user.py`.
-  - `app/database.py` : moteur SQLite async (`sqlite+aiosqlite:///./instanote26.db`,
-    fichier gitignored par `*.db`), `create_db_and_tables()` appelé dans le
-    `lifespan` de `app/main.py`. Migration Postgres prévue plus tard : remplacer
-    `DATABASE_URL` par la variable d'env fournie par l'addon Postgres Railway
-    (voir commentaire dans le fichier).
+  - `app/database.py` : moteur SQLite async, chemin du fichier lu depuis la
+    variable d'env `SQLITE_DB_PATH` (fallback `./instanote26.db` si absente,
+    fichier gitignored par `*.db`) — pensé pour brancher un Volume Railway en
+    prod : `SQLITE_DB_PATH=/data/instanote26.db` (Volume monté sur `/data`),
+    variable pas encore définie sur Railway à ce jour. `create_db_and_tables()`
+    appelé dans le `lifespan` de `app/main.py`. Migration Postgres prévue plus
+    tard : remplacer `DATABASE_URL` par la variable d'env fournie par l'addon
+    Postgres Railway (voir commentaire dans le fichier).
   - `app/models/user.py` : table `User` (hérite de `SQLAlchemyBaseUserTableUUID`
     → id/email/hashed_password/is_active/is_superuser/is_verified déjà inclus) +
     champ `plan` (S235/S275/S355) préparé pour une future intégration Stripe,

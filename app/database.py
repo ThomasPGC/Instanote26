@@ -1,3 +1,4 @@
+import os
 from typing import AsyncGenerator
 
 from fastapi import Depends
@@ -8,7 +9,12 @@ from app.base import Base
 from app.models.user import User
 
 # --- Dev : SQLite local ---
-DATABASE_URL = "sqlite+aiosqlite:///./instanote26.db"
+# SQLITE_DB_PATH permet de pointer vers un Volume Railway en prod (ex.
+# /data/instanote26.db) pour persister la base entre redémarrages du service.
+# Non définie -> fallback sur le fichier local ./instanote26.db (comportement
+# inchangé en dev).
+SQLITE_DB_PATH = os.environ.get("SQLITE_DB_PATH", "./instanote26.db")
+DATABASE_URL = f"sqlite+aiosqlite:///{SQLITE_DB_PATH}"
 
 # --- Migration Postgres (plus tard, sur Railway) ---
 # 1. Ajouter l'addon Postgres sur Railway -> il fournit une variable DATABASE_URL
