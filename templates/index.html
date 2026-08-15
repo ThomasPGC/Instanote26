@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Instanote — Prédimensionnement de portiques métalliques{% endblock %}
+
+{% block content %}
+<div class="px-3 py-5 text-center">
+    <h1 class="display-5 fw-bold">Vos prédimensionnements de portiques métalliques, en quelques secondes</h1>
+    <p class="lead text-muted mt-3">
+        Calcul des profilés IPE selon les caractéristiques de votre projet de charpente acier.
+    </p>
+    <a href="/calcul" class="btn btn-primary btn-lg px-5 py-3 mt-3">Lancer un calcul →</a>
+</div>
+
+<div class="row g-4 mt-4">
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card h-100 text-center">
+            <div class="card-body">
+                <h5 class="card-title">Rapide</h5>
+                <p class="card-text text-muted">Mise à jour en temps réel de la saisie.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card h-100 text-center">
+            <div class="card-body">
+                <h5 class="card-title">Conforme Eurocodes</h5>
+                <p class="card-text text-muted">Profilés IPE, charges neige/vent localisées.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card h-100 text-center">
+            <div class="card-body">
+                <h5 class="card-title">Prêt à transmettre</h5>
+                <p class="card-text text-muted">Export PDF de la note de calcul.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card h-100 text-center">
+            <div class="card-body">
+                <h5 class="card-title">Pensé pour le métier</h5>
+                <p class="card-text text-muted">Par un ingénieur structure.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

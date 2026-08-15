@@ -35,4 +35,4 @@ app.include_router(auth.router)
 
 @app.get("/")
 async def home(request: Request):
-    return templates.TemplateResponse(request=request, name="base.html")
+    return templates.TemplateResponse(request=request, name="index.html")
