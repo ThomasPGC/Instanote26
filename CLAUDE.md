@@ -158,6 +158,164 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   - À tester après chaque déploiement Railway : `GET /test-pdf` (sonde isolée,
     ne dépend pas du calcul métier).
 
+### Authentification fastapi-users (session 6, branche feature/auth-fastapi-users)
+
+- **But de cette session** : brancher l'inscription/connexion en isolation, sans
+  protéger aucune route de calcul existante (calcul.py, pdf_test.py inchangés
+  dans leur logique métier).
+- **Nouveaux fichiers** :
+  - `app/base.py` : classe `Base` (SQLAlchemy `DeclarativeBase`) partagée,
+    séparée pour éviter un import circulaire entre `database.py` et
+    `models/user.py`.
+  - `app/database.py` : moteur SQLite async, chemin du fichier lu depuis la
+    variable d'env `SQLITE_DB_PATH` (fallback `./instanote26.db` si absente,
+    fichier gitignored par `*.db`) — pensé pour brancher un Volume Railway en
+    prod : `SQLITE_DB_PATH=/data/instanote26.db` (Volume monté sur `/data`),
+    variable pas encore définie sur Railway à ce jour. `create_db_and_tables()`
+    appelé dans le `lifespan` de `app/main.py`. Migration Postgres prévue plus
+    tard : remplacer `DATABASE_URL` par la variable d'env fournie par l'addon
+    Postgres Railway (voir commentaire dans le fichier).
+  - `app/models/user.py` : table `User` (hérite de `SQLAlchemyBaseUserTableUUID`
+    → id/email/hashed_password/is_active/is_superuser/is_verified déjà inclus) +
+    champ `plan` (S235/S275/S355) préparé pour une future intégration Stripe,
+    **aucune logique ne l'utilise encore**.
+  - `app/schemas/user.py` : schémas Pydantic `UserRead`/`UserCreate`/`UserUpdate`
+    pour fastapi-users.
+  - `app/users.py` : `UserManager`, backend d'authentification par **cookie**
+    (plus adapté qu'un Bearer token à un site rendu côté serveur Jinja2 + HTMX),
+    JWT signé avec le secret `INSTANOTE26_AUTH_SECRET` (variable d'env, valeur
+    par défaut de dev en dur dans le code — **à définir sur Railway avant toute
+    mise en prod**). Expose `current_active_user` et
+    `current_active_user_optional`, prêts à être utilisés en `Depends(...)` sur
+    n'importe quelle route le jour où on voudra protéger quelque chose.
+  - `app/routers/auth.py` : routes `GET/POST /auth/login`, `GET/POST
+    /auth/register`, `GET /auth/logout`. Ne réutilise pas les routeurs tout
+    faits de fastapi-users (pensés pour une API JSON) : gère à la main l'appel à
+    `UserManager` + au backend d'auth pour renvoyer de vraies pages Jinja2 et des
+    redirects HTTP classiques (303) plutôt que des réponses JSON.
+    - **Piège rencontré** : la version installée de fastapi-users (15.0.5) a une
+      API différente de celle du module d'origine —
+      `CookieTransport.get_login_response(token)` /
+      `get_logout_response()` construisent et renvoient désormais eux-mêmes leur
+      `Response` (au lieu de prendre une réponse existante en paramètre à
+      modifier). Adapté en récupérant cette réponse puis en la transformant en
+      redirect (`response.status_code = 303` + `response.headers["location"]`).
+      À garder en tête si un futur `pip install --upgrade fastapi-users` change
+      encore cette API.
+  - `templates/auth/login.html` / `register.html` : déjà compatibles avec les
+    blocks de `base.html` (`{% extends "base.html" %}` + `block content`), pas
+    d'adaptation nécessaire.
+  - `app/middleware.py` : `CurrentUserMiddleware` (Starlette
+    `BaseHTTPMiddleware`) posé sur chaque requête via
+    `app.add_middleware(...)` dans `main.py`. Décode le cookie
+    `instanote26_auth` (nom lu depuis `cookie_transport.cookie_name`, pas
+    dupliqué en dur) et peuple `request.state.user` (objet `User` actif, ou
+    `None`) — sans cookie, retourne `None` immédiatement, aucune requête DB. Ça
+    permet à `base.html` d'afficher l'état de connexion sans que chaque route
+    (calcul, pdf...) ait à déclarer une dépendance `current_active_user`.
+- **Centralisation Jinja2Templates** : il y avait 3 instances séparées de
+  `Jinja2Templates(directory="templates")` (dans `main.py`, `calcul.py`,
+  `pdf_test.py`). Regroupées dans `app/templating.py` (`from app.templating
+  import templates`), utilisé aussi par `app/routers/auth.py`.
+- **Nav conditionnelle** (`templates/base.html`) : `{% if request.state.user
+  %}` → affiche "Mon compte — {email}" (texte simple, **pas un lien** : il n'y
+  a pas encore de page compte) + lien "Déconnexion" (`/auth/logout`) ; sinon
+  affiche les liens "Connexion"/"Inscription" comme avant.
+- **Dépendances ajoutées** (`requirements.txt`) : `fastapi-users[sqlalchemy]`,
+  `aiosqlite`, `argon2-cffi` (hashage des mots de passe). `python-multipart`
+  était déjà présent (utilisé aussi par les formulaires HTMX existants).
+- **Vérifié en local** : démarrage propre, cycle complet register → cookie posé
+  → nav "Mon compte" → logout → nav repasse en Connexion/Inscription, et
+  `/calcul` + `/test-pdf` toujours 200 sans changement de comportement.
+
+**Reste à faire (auth)** :
+- Aucune route n'est protégée : décider quelles pages nécessiteront
+  `current_active_user` (ou `_optional` + redirect manuel vers `/auth/login`
+  plutôt qu'un 401 JSON, plus adapté à un site HTML) et où.
+- Créer une vraie page "Mon compte" (le lien nav n'est qu'un texte pour
+  l'instant).
+- Définir `INSTANOTE26_AUTH_SECRET` en variable d'environnement Railway avant
+  toute mise en prod (actuellement secret de dev en dur en fallback).
+- Le champ `plan` sur `User` n'est branché à aucune logique (préparation
+  Stripe uniquement).
+
+### Emails transactionnels (session 7, branche feature/auth-fastapi-users)
+
+- **But** : vérification d'email à l'inscription + réinitialisation de mot de
+  passe par un vrai email, envoyés via l'API **Brevo** (ex-Sendinblue), pas de
+  SMTP direct.
+- **`app/email.py`** : fonction générique `send_email(to, subject,
+  html_content)`, appelle `POST https://api.brevo.com/v3/smtp/email` en async
+  (`httpx`, déjà une dépendance du projet). Lève une erreur explicite si
+  `BREVO_API_KEY` ou `EMAIL_FROM` ne sont pas définis — jamais de valeur en dur.
+- **Vérification d'email** (`app/users.py` → `UserManager`) :
+  - `on_after_register` appelle désormais `self.request_verify(user, request)`
+    (fourni par `BaseUserManager` de fastapi-users) juste après la création du
+    compte → déclenche automatiquement `on_after_request_verify`.
+  - `on_after_request_verify` construit le lien `{APP_BASE_URL}/auth/verify?token=...`
+    et envoie `templates/emails/verify.html` par email.
+  - `GET /auth/verify?token=...` (`app/routers/auth.py`) appelle
+    `user_manager.verify(token)` (passe `is_verified` à `True`) et affiche
+    `templates/auth/verify_result.html` (succès, déjà vérifié, ou lien
+    invalide/expiré — `InvalidVerifyToken`/`UserAlreadyVerified`).
+  - **Non bloquant** : la vérification n'est pas exigée pour se connecter
+    (`current_active_user` ne vérifie que `is_active`, pas `is_verified`) —
+    à décider plus tard si on veut la rendre obligatoire pour certaines
+    actions.
+- **Réinitialisation de mot de passe** :
+  - `on_after_forgot_password` (`app/users.py`) : le `print()` de la session 6
+    est remplacé par un vrai envoi d'email (lien
+    `{APP_BASE_URL}/auth/reset-password?token=...`,
+    `templates/emails/reset_password.html`).
+  - `GET/POST /auth/forgot-password` : formulaire email → déclenche
+    `user_manager.forgot_password(user)`. Répond **toujours** par le même
+    message ("si un compte existe...") que l'email soit connu ou non, pour ne
+    pas permettre à quelqu'un de deviner quels emails sont inscrits
+    (énumération de comptes).
+  - `GET /auth/reset-password?token=...` : formulaire nouveau mot de passe
+    (token dans un champ caché). `POST` appelle
+    `user_manager.reset_password(token, password)`, gère
+    `InvalidResetPasswordToken` / `UserInactive` / `InvalidPasswordException`
+    avec un message d'erreur adapté sur le formulaire.
+  - Lien "Mot de passe oublié ?" ajouté sous le formulaire de
+    `templates/auth/login.html`.
+- **Templates email** (`templates/emails/verify.html`,
+  `templates/emails/reset_password.html`) : HTML simple avec styles inline
+  (pas de lien vers `base.html` — un email n'a pas accès au CSS/Bootstrap du
+  site), rendus via `templates.get_template(...).render(...)` (pas besoin de
+  `request` : ce ne sont pas des pages web, juste du HTML à envoyer par email).
+- **Anti-email jetable** : librairie `disposable-email-domains` (liste de
+  domaines connus comme jetables/temporaires). Vérifié dans
+  `POST /auth/register` (`app/routers/auth.py`) : le domaine de l'email est
+  comparé à `disposable_email_domains.blocklist` *avant* la création du
+  compte ; si jetable, retourne l'erreur "Merci d'utiliser une adresse email
+  permanente" sur le formulaire d'inscription.
+- **Nouvelles variables d'environnement requises** (aucune valeur par défaut en
+  dur dans le code, contrairement à `INSTANOTE26_AUTH_SECRET`) :
+  - `BREVO_API_KEY` : clé API du compte Brevo (Brevo → Settings → SMTP & API →
+    API Keys).
+  - `EMAIL_FROM` : adresse expéditeur — doit être un expéditeur **validé**
+    dans le compte Brevo (Senders, Domains & Dedicated IPs), sinon l'API
+    Brevo refuse l'envoi.
+  - `APP_BASE_URL` : URL de base utilisée pour construire les liens dans les
+    emails (ex. `http://localhost:8000` en local, `https://<domaine>.up.railway.app`
+    en prod). Si absente, `app/users.py` lève une erreur explicite plutôt que
+    de deviner une URL.
+  - À définir **en local** (fichier `.env` à la racine, jamais committé —
+    `.env` était déjà dans `.gitignore` ; modèle fourni dans `.env.example`) et
+    **sur Railway** (Settings → Variables) avant tout test/déploiement.
+  - `python-dotenv` ajouté à `requirements.txt` : `load_dotenv()` appelé tout
+    en haut de `app/main.py`, **avant** les imports de `app.database`/
+    `app.routers` (qui importent `app.users`/`app.email`, lisant ces variables
+    au chargement du module) — sur Railway, `.env` n'existe pas et
+    `load_dotenv()` ne fait rien, les variables viennent directement de
+    l'environnement.
+- **Vérifié en local sans configuration Brevo** : l'inscription échoue
+  proprement (erreur explicite côté serveur signalant `APP_BASE_URL` manquant)
+  plutôt que d'échouer silencieusement ou d'envoyer un email cassé — confirme
+  que le point d'intégration est correctement branché avant le test avec de
+  vraies clés API.
+
 ### Compactage formulaire (session 4, templates/calcul/form.html)
 - Les 3 cartes (Géométrie, Charges permanentes, Localisation) passent de côte-à-côte
   (col-lg-4) à empilées en pleine largeur (col-12), dans cet ordre — Localisation

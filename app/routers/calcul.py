@@ -12,14 +12,14 @@ from datetime import date
 import httpx
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
-from fastapi.templating import Jinja2Templates
 from weasyprint import HTML
 
 import calcport
 import lecture_ipe_csv
 
+from app.templating import templates
+
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 _IPE_TABLE = lecture_ipe_csv.Tuple_tous_ipe()
 IPE_SECTIONS = {

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center mt-5">
+  <div class="col-md-6 text-center">
+    {% if success %}
+    <div class="alert alert-success">{{ message }}</div>
+    <a href="/auth/login" class="btn btn-primary">Se connecter</a>
+    {% else %}
+    <div class="alert alert-danger">{{ message }}</div>
+    <a href="/auth/register" class="btn btn-secondary">Retour à l'inscription</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
