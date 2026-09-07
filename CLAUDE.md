@@ -17,6 +17,16 @@
 ## Déploiement (Railway)
 - Service Railway connecté à la branche `master` du repo GitHub, déploiement
   automatique à chaque push sur cette branche.
+  → **Ne pas pousser sur `master` des changements mineurs / doc seule**
+  (ajustements de ce `CLAUDE.md`, typos...) : chaque push rebuild et redémarre
+  le service Railway. Commit en local, et les faire partir avec le prochain
+  changement de code utile.
+- **Commande de démarrage** (Railway → Settings) :
+  `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+  Les migrations Alembic sont donc appliquées automatiquement à chaque
+  déploiement, avant le lancement du serveur — plus besoin de `alembic upgrade
+  head` manuel en shell. (Le `Procfile` du repo reste présent mais cette
+  commande explicite le remplace côté Railway.)
 - Builder : Railpack (successeur de Nixpacks, standard actuel Railway —
   config dans `railpack.json` à la racine, voir section Export PDF plus bas
   pour le détail des paquets apt).
@@ -361,10 +371,10 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   - **En prod (Railway)** : ✅ fait au déploiement de la session 8 —
     `alembic stamp 69dfd86650b6` puis `alembic upgrade head` lancés une fois
     sur la base du Volume, les 3 colonnes sont en place, `/compte` et l'export
-    PDF fonctionnent en prod. Les migrations ne sont **toujours pas** lancées
-    automatiquement au boot (Procfile inchangé) : pour les prochaines, refaire
-    `alembic upgrade head` manuellement après le déploiement (ou ajouter un
-    release command — voir « prochaine session »).
+    PDF fonctionnent en prod. Depuis, la commande de démarrage Railway est
+    `alembic upgrade head && uvicorn ...` (voir section « Déploiement ») :
+    **les prochaines migrations s'appliquent automatiquement au déploiement**,
+    rien à faire à la main.
 
 - **Modèle `User`** (`app/models/user.py`) : 3 champs `Optional[str]` nullable
   ajoutés — `nom` (100), `prenom` (100), `entreprise` (200). Éditables depuis
@@ -513,9 +523,8 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
     sur cette seule base. Cohérent avec les libellés déjà corrigés
     (« prédimensionnement », voir « Corrigés récemment »).
   - Lien vers ces pages dans le `<footer>` de `base.html` (footer à créer).
-- **(Lié) Migrations Alembic en prod** : envisager un *release command*
-  Railway (`alembic upgrade head` avant le démarrage) pour ne plus le faire à
-  la main à chaque déploiement qui touche le schéma.
+- ✅ **Migrations Alembic en prod automatisées** : commande de démarrage Railway
+  = `alembic upgrade head && uvicorn ...` (voir section « Déploiement »).
 
 ## Corrigés récemment
 - **Masse au m² faux** (`templates/calcul/result_partial.html` +
