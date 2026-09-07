@@ -348,18 +348,20 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
       Alembic recrée la table (copie + rename) quand nécessaire.
     - `target_metadata = Base.metadata` (+ `import app.models.user`) pour
       `--autogenerate`.
-  - **Rapport Alembic ↔ `create_db_and_tables()`** : la table `user` est
-    toujours créée au premier démarrage par `Base.metadata.create_all`
-    (lifespan de `main.py`). Alembic ne gère que les évolutions *au-dessus* de
-    cette base. La 1re migration `69dfd86650b6` (« baseline ») est donc
-    **vide** : sur une base existante on a fait `alembic stamp head` pour
-    marquer l'état sans rejouer de DDL. ⚠️ Sur une base neuve, lancer
-    `alembic upgrade head` *sans* avoir démarré l'app avant échouerait (la
-    table `user` n'existe pas encore) — l'ordre est : démarrage app (crée
-    `user`) → `alembic stamp <baseline>` → `alembic upgrade head`.
+  - **Alembic est le seul maître du schéma** (depuis le fix
+    `fix/alembic-ownership`, voir « Corrigés récemment ») : plus de
+    `Base.metadata.create_all` au démarrage de l'app (`create_db_and_tables()`
+    supprimé, `lifespan` retiré de `main.py`). La création de la table `user`
+    comme ses évolutions passent **uniquement** par `alembic upgrade head`.
+  - **Migration `69dfd86650b6` (« baseline »)** : crée la table `user` telle
+    qu'elle était avant la session 8 (colonnes fastapi-users + `plan`), de
+    façon **idempotente** (`if inspect(bind).has_table("user"): return`) — sans
+    effet sur les bases déjà existantes (prod, dev), qui restent « adoptées »
+    via `alembic stamp`.
   - **Migration `7239b9e48d12`** : `ADD COLUMN nom / prenom / entreprise` sur
-    `user` (générée par `--autogenerate`, appliquée en local sur la vraie base
-    de dev — 2 comptes existants intacts, colonnes à `NULL`).
+    `user`, **idempotente elle aussi** (n'ajoute que les colonnes réellement
+    absentes) — protège les bases dont le schéma aurait pris de l'avance sur le
+    pointeur de version Alembic.
   - **Prochaine migration** :
     1. modifier le(s) modèle(s) SQLAlchemy (`app/models/`) ;
     2. `alembic revision --autogenerate -m "description courte"` ;
@@ -368,13 +370,11 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
     4. `alembic upgrade head` pour appliquer.
     `alembic downgrade -1` pour annuler la dernière, `alembic current` /
     `alembic history` pour l'état.
-  - **En prod (Railway)** : ✅ fait au déploiement de la session 8 —
-    `alembic stamp 69dfd86650b6` puis `alembic upgrade head` lancés une fois
-    sur la base du Volume, les 3 colonnes sont en place, `/compte` et l'export
-    PDF fonctionnent en prod. Depuis, la commande de démarrage Railway est
-    `alembic upgrade head && uvicorn ...` (voir section « Déploiement ») :
-    **les prochaines migrations s'appliquent automatiquement au déploiement**,
-    rien à faire à la main.
+  - **En prod (Railway)** : commande de démarrage
+    `alembic upgrade head && uvicorn ...` (voir section « Déploiement ») → les
+    migrations s'appliquent automatiquement à chaque déploiement. Base du
+    Volume à `7239b9e48d12` (head), `/compte` + export PDF OK.
+    (Historique de l'incident de mise en route : voir « Corrigés récemment ».)
 
 - **Modèle `User`** (`app/models/user.py`) : 3 champs `Optional[str]` nullable
   ajoutés — `nom` (100), `prenom` (100), `entreprise` (200). Éditables depuis
@@ -527,6 +527,24 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   = `alembic upgrade head && uvicorn ...` (voir section « Déploiement »).
 
 ## Corrigés récemment
+- **Crash prod « duplicate column name: nom » (fix `fix/alembic-ownership`)** :
+  après avoir mis la commande de démarrage Railway
+  `alembic upgrade head && uvicorn ...`, le service partait en crash-loop.
+  Cause : deux systèmes se disputaient le schéma — `Base.metadata.create_all`
+  (lifespan de `main.py`) créait `user` avec *toutes* les colonnes du modèle,
+  et les migrations `ADD COLUMN` d'Alembic rejouaient par-dessus. Le
+  `alembic stamp 69dfd86650b6` passé à la main en prod avait laissé le
+  pointeur de version en retard sur le schéma réel → `upgrade head` tentait de
+  re-créer des colonnes existantes.
+  - **Dépannage immédiat** (déjà fait en prod) : `alembic stamp head` dans un
+    shell Railway pour re-synchroniser le pointeur, puis restart.
+  - **Fix de fond** : Alembic devient seul maître du schéma —
+    `create_db_and_tables()` / `Base.metadata.create_all` supprimés, `lifespan`
+    retiré de `main.py` ; migration baseline `69dfd86650b6` crée maintenant la
+    table `user` (idempotent, `has_table` guard) ; migration `7239b9e48d12`
+    rendue idempotente (n'ajoute que les colonnes absentes). Le schéma ne peut
+    plus prendre de l'avance sur Alembic. Testé : base neuve, base adoptée à
+    head, base adoptée bloquée à la baseline, round-trip downgrade/upgrade.
 - **Masse au m² faux** (`templates/calcul/result_partial.html` +
   `templates/calcul/pdf_result.html`) : la surface utilisée pour ramener la
   masse du portique en kg/m² était `portée × longueur du bâtiment` (surface
