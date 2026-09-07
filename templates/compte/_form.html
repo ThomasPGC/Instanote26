@@ -1,0 +1,44 @@
+{# Fragment : formulaire de profil.
+   Inclus tel quel par compte.html au chargement, et renvoyé seul par
+   POST /compte (HTMX) — il se remplace lui-même via hx-swap="outerHTML"
+   sur #compte-form, bandeau de confirmation compris. #}
+<div id="compte-form">
+  {% if saved %}
+  <div class="alert alert-success" role="alert">Profil enregistré.</div>
+  {% endif %}
+
+  <form hx-post="/compte" hx-target="#compte-form" hx-swap="outerHTML">
+    <div class="mb-3">
+      <label for="email" class="form-label">Email</label>
+      <input type="email" class="form-control" id="email" value="{{ user.email }}" readonly>
+      <div class="form-text">L'adresse email ne peut pas être modifiée ici.</div>
+    </div>
+
+    <div class="mb-3">
+      <label for="plan" class="form-label">Offre</label>
+      <input type="text" class="form-control" id="plan"
+             value="{{ plan_labels.get(user.plan, user.plan) }}" readonly>
+    </div>
+
+    <div class="row">
+      <div class="col-md-6 mb-3">
+        <label for="prenom" class="form-label">Prénom</label>
+        <input type="text" class="form-control" id="prenom" name="prenom"
+               maxlength="100" value="{{ user.prenom or '' }}">
+      </div>
+      <div class="col-md-6 mb-3">
+        <label for="nom" class="form-label">Nom</label>
+        <input type="text" class="form-control" id="nom" name="nom"
+               maxlength="100" value="{{ user.nom or '' }}">
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label for="entreprise" class="form-label">Entreprise</label>
+      <input type="text" class="form-control" id="entreprise" name="entreprise"
+             maxlength="200" value="{{ user.entreprise or '' }}">
+    </div>
+
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+  </form>
+</div>

@@ -46,6 +46,8 @@
 - templates/ : HTML Jinja2
 - static/ : CSS/JS
 - static/js/portique.js : dessin SVG temps réel + géolocalisation
+- migrations/ + alembic.ini : migrations de schéma de base (Alembic, voir
+  session 8)
 
 ## Code métier (business/)
 Contient le moteur de calcul Python — indépendant du framework web.
@@ -64,7 +66,11 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
 
 ## Conventions
 - Templates FastAPI : TemplateResponse(request=request, name="fichier.html")
-- Tous les endpoints HTMX dans app/routers/calcul.py
+- Endpoints HTMX du calcul dans app/routers/calcul.py ; les endpoints du
+  compte utilisateur dans app/routers/compte.py
+- Évolution du schéma de base : passer par Alembic
+  (`alembic revision --autogenerate -m "..."` puis `alembic upgrade head`),
+  ne pas se reposer sur `Base.metadata.create_all` (voir session 8)
 
 ## Features développées (sessions 1 à 3)
 
@@ -214,9 +220,9 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   `pdf_test.py`). Regroupées dans `app/templating.py` (`from app.templating
   import templates`), utilisé aussi par `app/routers/auth.py`.
 - **Nav conditionnelle** (`templates/base.html`) : `{% if request.state.user
-  %}` → affiche "Mon compte — {email}" (texte simple, **pas un lien** : il n'y
-  a pas encore de page compte) + lien "Déconnexion" (`/auth/logout`) ; sinon
-  affiche les liens "Connexion"/"Inscription" comme avant.
+  %}` → affiche "Mon compte — {email}" + lien "Déconnexion" (`/auth/logout`) ;
+  sinon affiche les liens "Connexion"/"Inscription" comme avant.
+  (session 8 : "Mon compte — {email}" est devenu un lien vers `/compte`.)
 - **Dépendances ajoutées** (`requirements.txt`) : `fastapi-users[sqlalchemy]`,
   `aiosqlite`, `argon2-cffi` (hashage des mots de passe). `python-multipart`
   était déjà présent (utilisé aussi par les formulaires HTMX existants).
@@ -225,11 +231,10 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   `/calcul` + `/test-pdf` toujours 200 sans changement de comportement.
 
 **Reste à faire (auth)** :
-- Aucune route n'est protégée : décider quelles pages nécessiteront
-  `current_active_user` (ou `_optional` + redirect manuel vers `/auth/login`
-  plutôt qu'un 401 JSON, plus adapté à un site HTML) et où.
-- Créer une vraie page "Mon compte" (le lien nav n'est qu'un texte pour
-  l'instant).
+- Peu de routes protégées : seule `/compte` l'est (session 8, via
+  `current_active_user_optional` + redirect manuel). Décider si d'autres pages
+  (calcul, export PDF...) doivent l'être.
+- ~~Créer une vraie page "Mon compte"~~ → fait en session 8 (`/compte`).
 - Définir `INSTANOTE26_AUTH_SECRET` en variable d'environnement Railway avant
   toute mise en prod (actuellement secret de dev en dur en fallback).
 - Le champ `plan` sur `User` n'est branché à aucune logique (préparation
@@ -312,6 +317,95 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   que le point d'intégration est correctement branché avant le test avec de
   vraies clés API.
 
+### Page « Mon compte » + Alembic (session 8, branche feature/page-compte)
+
+- **But** : première page réservée aux utilisateurs connectés — édition du
+  profil (nom, prénom, entreprise) — et mise en place d'Alembic pour gérer les
+  évolutions du schéma de base sans repartir de zéro.
+
+- **Alembic (migrations de schéma)** :
+  - `alembic` ajouté à `requirements.txt`. Dossier `migrations/` à la racine
+    (`alembic init migrations`), config dans `alembic.ini`.
+  - `migrations/env.py` adapté au projet :
+    - reconstruit l'URL de la base depuis la variable d'env `SQLITE_DB_PATH`
+      (même logique que `app/database.py`, fallback `./instanote26.db`) — donc
+      cohérent dev / prod (Volume Railway), `sqlalchemy.url` volontairement
+      **vide** dans `alembic.ini`.
+    - utilise un moteur **synchrone** (`sqlite://`, pilote `sqlite3` stdlib) :
+      l'app tourne en async (`aiosqlite`) mais les migrations n'en ont pas
+      besoin.
+    - `render_as_batch=True` : SQLite ne sait pas faire tous les `ALTER TABLE`,
+      Alembic recrée la table (copie + rename) quand nécessaire.
+    - `target_metadata = Base.metadata` (+ `import app.models.user`) pour
+      `--autogenerate`.
+  - **Rapport Alembic ↔ `create_db_and_tables()`** : la table `user` est
+    toujours créée au premier démarrage par `Base.metadata.create_all`
+    (lifespan de `main.py`). Alembic ne gère que les évolutions *au-dessus* de
+    cette base. La 1re migration `69dfd86650b6` (« baseline ») est donc
+    **vide** : sur une base existante on a fait `alembic stamp head` pour
+    marquer l'état sans rejouer de DDL. ⚠️ Sur une base neuve, lancer
+    `alembic upgrade head` *sans* avoir démarré l'app avant échouerait (la
+    table `user` n'existe pas encore) — l'ordre est : démarrage app (crée
+    `user`) → `alembic stamp <baseline>` → `alembic upgrade head`.
+  - **Migration `7239b9e48d12`** : `ADD COLUMN nom / prenom / entreprise` sur
+    `user` (générée par `--autogenerate`, appliquée en local sur la vraie base
+    de dev — 2 comptes existants intacts, colonnes à `NULL`).
+  - **Prochaine migration** :
+    1. modifier le(s) modèle(s) SQLAlchemy (`app/models/`) ;
+    2. `alembic revision --autogenerate -m "description courte"` ;
+    3. **relire** le fichier généré dans `migrations/versions/` (l'autogenerate
+       n'est pas parfait, surtout sur SQLite) ;
+    4. `alembic upgrade head` pour appliquer.
+    `alembic downgrade -1` pour annuler la dernière, `alembic current` /
+    `alembic history` pour l'état.
+  - **En prod (Railway)** : la base du Volume n'a pas encore de table
+    `alembic_version`. Au prochain déploiement qui embarque Alembic, il faudra
+    (une seule fois) `alembic stamp 69dfd86650b6` puis `alembic upgrade head`
+    pour ajouter les 3 colonnes. Les migrations ne sont **pas** lancées
+    automatiquement au boot pour l'instant (Procfile inchangé).
+
+- **Modèle `User`** (`app/models/user.py`) : 3 champs `Optional[str]` nullable
+  ajoutés — `nom` (100), `prenom` (100), `entreprise` (200). Éditables depuis
+  `/compte`. Le champ `plan` reste inchangé (toujours non branché, préparation
+  Stripe) et est affiché en lecture seule sur la page.
+
+- **Route `/compte`** (`app/routers/compte.py`, nouveau routeur, monté dans
+  `main.py`) :
+  - `GET /compte` : protégée via `current_active_user_optional` + `RedirectResponse`
+    303 vers `/auth/login` si non connecté (pas `current_active_user` qui
+    renverrait un 401 JSON, inadapté à une page HTML — cf. « Reste à faire (auth) »).
+    Rend `templates/compte/compte.html` (formulaire pré-rempli).
+  - `POST /compte` : endpoint HTMX. Recharge l'utilisateur dans sa propre
+    session DB (`session.get(User, user.id)` — l'objet issu de la dépendance
+    d'auth est sur une session déjà fermée), met à jour les 3 champs
+    (`.strip() or None`), `commit`, puis renvoie le fragment
+    `templates/compte/_form.html` re-rendu avec un bandeau « Profil enregistré ».
+    Si le cookie a expiré entre-temps : réponse `401` + en-tête `HX-Redirect:
+    /auth/login` (HTMX fait la redirection navigateur).
+  - Templates : `compte/compte.html` (étend `base.html`) inclut
+    `compte/_form.html` dans `<div id="compte-form">` ; le form a
+    `hx-post="/compte" hx-target="#compte-form" hx-swap="outerHTML"` → le
+    fragment renvoyé se remplace lui-même, bandeau compris. Style Bootstrap 5
+    cohérent avec `auth/login.html` / `register.html`.
+
+- **Navbar** (`templates/base.html`) : « Mon compte — {email} » n'est plus un
+  `<span>` mais un `<a href="/compte">` (même style `btn btn-outline-light
+  btn-sm`).
+
+- **Vérifié en local** (script de test bout-en-bout, base SQLite temporaire) :
+  - non connecté → `GET /compte` redirige (303) vers `/auth/login`, `POST` →
+    401 + `HX-Redirect` ;
+  - inscription → cookie posé → `GET /compte` 200 avec email pré-rempli ;
+  - `POST /compte` met à jour les 3 champs, bandeau de confirmation, valeurs
+    re-affichées ; champ vide/espaces → `NULL` ;
+  - déconnexion puis **relogin** : les valeurs sont bien persistées en base ;
+  - `alembic check` : « No new upgrade operations detected » (modèle ⇔ schéma
+    cohérents).
+  - Aparté : le cookie d'auth est `Secure` (`cookie_transport` dans
+    `app/users.py`) → en dev il ne fonctionne que parce que les navigateurs
+    traitent `localhost` comme contexte sécurisé même en `http`. Un test via
+    `TestClient` doit utiliser `base_url="https://testserver"`.
+
 ### Compactage formulaire (session 4, templates/calcul/form.html)
 - Les 3 cartes (Géométrie, Charges permanentes, Localisation) passent de côte-à-côte
   (col-lg-4) à empilées en pleine largeur (col-12), dans cet ordre — Localisation
@@ -376,6 +470,10 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
 - mettre le focus sur l'image et les resultats de calcul
 - vérifier `GET /test-pdf` juste après le prochain déploiement Railway pour confirmer
   que les paquets apt de `railpack.json` suffisent bien à WeasyPrint en prod
+- au prochain déploiement Railway embarquant Alembic : lancer une fois
+  `alembic stamp 69dfd86650b6` puis `alembic upgrade head` sur la base du
+  Volume pour ajouter les colonnes `nom` / `prenom` / `entreprise` (voir
+  session 8) — sinon `/compte` plantera en prod
 
 ## Corrigés récemment
 - **Masse au m² faux** (`templates/calcul/result_partial.html` +
