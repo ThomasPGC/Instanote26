@@ -6,24 +6,17 @@ from dotenv import load_dotenv
 # .env n'existe pas — load_dotenv() ne fait rien dans ce cas.
 load_dotenv()
 
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
-from app.database import create_db_and_tables
 from app.middleware import CurrentUserMiddleware
 from app.routers import auth, calcul, compte, pdf_test
 from app.templating import templates
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await create_db_and_tables()
-    yield
-
-
-app = FastAPI(title="Instanote — Calcul charpente métallique", lifespan=lifespan)
+# Le schéma de base est géré exclusivement par Alembic (`alembic upgrade head`,
+# lancé par la commande de démarrage Railway et à faire à la main en dev) —
+# il n'y a plus de création de tables au démarrage de l'app.
+app = FastAPI(title="Instanote — Calcul charpente métallique")
 
 app.add_middleware(CurrentUserMiddleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
