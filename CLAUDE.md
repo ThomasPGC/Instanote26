@@ -358,11 +358,13 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
     4. `alembic upgrade head` pour appliquer.
     `alembic downgrade -1` pour annuler la dernière, `alembic current` /
     `alembic history` pour l'état.
-  - **En prod (Railway)** : la base du Volume n'a pas encore de table
-    `alembic_version`. Au prochain déploiement qui embarque Alembic, il faudra
-    (une seule fois) `alembic stamp 69dfd86650b6` puis `alembic upgrade head`
-    pour ajouter les 3 colonnes. Les migrations ne sont **pas** lancées
-    automatiquement au boot pour l'instant (Procfile inchangé).
+  - **En prod (Railway)** : ✅ fait au déploiement de la session 8 —
+    `alembic stamp 69dfd86650b6` puis `alembic upgrade head` lancés une fois
+    sur la base du Volume, les 3 colonnes sont en place, `/compte` et l'export
+    PDF fonctionnent en prod. Les migrations ne sont **toujours pas** lancées
+    automatiquement au boot (Procfile inchangé) : pour les prochaines, refaire
+    `alembic upgrade head` manuellement après le déploiement (ou ajouter un
+    release command — voir « prochaine session »).
 
 - **Modèle `User`** (`app/models/user.py`) : 3 champs `Optional[str]` nullable
   ajoutés — `nom` (100), `prenom` (100), `entreprise` (200). Éditables depuis
@@ -468,12 +470,52 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
 
 ## Points en cours / prochaine session
 - mettre le focus sur l'image et les resultats de calcul
-- vérifier `GET /test-pdf` juste après le prochain déploiement Railway pour confirmer
-  que les paquets apt de `railpack.json` suffisent bien à WeasyPrint en prod
-- au prochain déploiement Railway embarquant Alembic : lancer une fois
-  `alembic stamp 69dfd86650b6` puis `alembic upgrade head` sur la base du
-  Volume pour ajouter les colonnes `nom` / `prenom` / `entreprise` (voir
-  session 8) — sinon `/compte` plantera en prod
+- ✅ déploiement session 8 vérifié en prod : `GET /test-pdf` OK, export PDF de
+  la note de calcul OK, `/compte` OK (stamp + upgrade Alembic faits sur le
+  Volume). WeasyPrint : paquets apt de `railpack.json` confirmés suffisants.
+
+### Objectifs prochaine session (back office + suivi d'usage + mentions légales)
+- **Back office admin** : interface pour gérer les utilisateurs (lister,
+  chercher, voir le détail, activer/désactiver, changer le `plan`, supprimer).
+  - `User.is_superuser` existe déjà (hérité de fastapi-users) → s'en servir
+    comme drapeau admin : dépendance `current_superuser =
+    fastapi_users.current_user(active=True, superuser=True)` sur les routes
+    `/admin/...`, sinon 403.
+  - Passer un compte en admin : `UPDATE user SET is_superuser=1 WHERE
+    email=...` (script ponctuel ou via `alembic`/shell Railway), pas d'UI
+    self-service pour ça.
+  - Templates Jinja2 + HTMX comme le reste, nouveau routeur
+    `app/routers/admin.py`.
+- **Suivi d'usage / analytics** : compter les calculs, la fréquence par
+  utilisateur, les types de projet (portée, hauteur, couverture...).
+  - Nouvelle table (ex. `calcul_log`) : `id`, `user_id` (nullable si calcul
+    anonyme), `created_at`, un sous-ensemble des entrées (`portee`, `hpot`,
+    `pente`, `entraxe`, `couv`, commune/département) et des sorties (sections
+    retenues, statut OK / PasDeSolutionIPE). **Modèle SQLAlchemy + migration
+    Alembic** (`alembic revision --autogenerate`).
+  - Écriture depuis `POST /htmx/calcul` (et l'export PDF), en *plus* du calcul,
+    sans bloquer la réponse si l'insert échoue (try/except).
+  - Vues d'agrégation dans le back office (nb de calculs / jour, top
+    utilisateurs, répartition des portées...). Attention RGPD : c'est de la
+    donnée liée à des comptes → cf. mentions légales ci-dessous.
+  - Réutiliser éventuellement l'instrumentation `AUDIT_MODE` déjà en place
+    pour le contenu à logger, mais le logging d'usage doit être actif en prod
+    (pas gated par `AUDIT_MODE`, qui reste réservé au diagnostic calcul).
+- **Mentions légales + disclaimer métier** :
+  - Page `/mentions-legales` (éditeur du site, hébergeur = Railway, contact,
+    politique de données perso / cookies — le cookie d'auth `instanote26_auth`
+    est un cookie strictement nécessaire, pas de consentement requis, mais à
+    mentionner).
+  - **Disclaimer** affiché de façon visible (près du bouton « Calculer » et/ou
+    dans le PDF exporté, + acceptation à l'inscription) : l'outil fait du
+    **pré-dimensionnement / chiffrage** uniquement, il ne remplace pas une note
+    de calcul complète vérifiée aux états limites par un BE ; ne pas construire
+    sur cette seule base. Cohérent avec les libellés déjà corrigés
+    (« prédimensionnement », voir « Corrigés récemment »).
+  - Lien vers ces pages dans le `<footer>` de `base.html` (footer à créer).
+- **(Lié) Migrations Alembic en prod** : envisager un *release command*
+  Railway (`alembic upgrade head` avant le démarrage) pour ne plus le faire à
+  la main à chaque déploiement qui touche le schéma.
 
 ## Corrigés récemment
 - **Masse au m² faux** (`templates/calcul/result_partial.html` +
