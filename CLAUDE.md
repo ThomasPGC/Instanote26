@@ -485,6 +485,15 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   Volume). WeasyPrint : paquets apt de `railpack.json` confirmés suffisants.
 
 ### Objectifs prochaine session (back office + suivi d'usage + mentions légales)
+- **Warm-up / validation du pipeline Alembic** : ajouter des champs adresse à
+  `User` (ex. `adresse`, `code_postal`, `ville`, `pays` — nullable) et dérouler
+  le cycle complet une fois pour vérifier qu'Alembic « sait où il met ses
+  petits » : modifier `app/models/user.py` → `alembic revision --autogenerate
+  -m "champs adresse user"` → **relire** le fichier généré → `alembic upgrade
+  head` en local → commit → au déploiement Railway la migration passe toute
+  seule (start command `alembic upgrade head && uvicorn ...`). Les exposer dans
+  la page `/compte` au passage. Bonus : `alembic history` / `alembic current`
+  pour visualiser la chaîne de révisions.
 - **Back office admin** : interface pour gérer les utilisateurs (lister,
   chercher, voir le détail, activer/désactiver, changer le `plan`, supprimer).
   - `User.is_superuser` existe déjà (hérité de fastapi-users) → s'en servir
