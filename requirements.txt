@@ -12,3 +12,6 @@ aiosqlite
 argon2-cffi
 python-dotenv
 disposable-email-domains
+
+# Migrations de schéma de base de données
+alembic==1.19.2
