@@ -7,7 +7,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.middleware import CurrentUserMiddleware
 from app.routers import auth, calcul, compte, entreprise, pdf_test
@@ -31,3 +33,23 @@ app.include_router(entreprise.router)
 @app.get("/")
 async def home(request: Request):
     return templates.TemplateResponse(request=request, name="index.html")
+
+
+@app.exception_handler(404)
+async def page_introuvable(request: Request, exc: StarletteHTTPException):
+    """Page 404 HTML cohérente avec le reste du site, en gardant le code 404.
+
+    Ne s'applique qu'aux navigations navigateur (en-tête `Accept: text/html`,
+    hors requête HTMX). Les autres cas — requêtes HTMX, appels JSON/API, assets
+    statiques manquants — conservent la réponse 404 « brute » `{"detail": ...}`,
+    identique au comportement FastAPI par défaut. Aucun endpoint ne renvoie 404
+    volontairement aujourd'hui, mais ça évite d'en casser un plus tard.
+    """
+    accept = request.headers.get("accept", "")
+    is_htmx = request.headers.get("HX-Request", "").lower() == "true"
+    if is_htmx or "text/html" not in accept:
+        return JSONResponse({"detail": exc.detail or "Not Found"}, status_code=404)
+
+    return templates.TemplateResponse(
+        request=request, name="errors/404.html", status_code=404
+    )
