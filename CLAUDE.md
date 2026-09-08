@@ -426,6 +426,19 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   collecte nom, prénom, entreprise, **SIRET** et **adresse**, le SIRET est
   vérifié auprès de la base Sirene. L'adresse est aussi éditable sur `/compte`.
 
+- **Contraintes métier qui expliquent les choix** :
+  - **Pas de champ `pays`, SIRET franco-français uniquement** : l'éditeur
+    facture via une coopérative d'entrepreneurs (CAE) qui ne l'autorise pas à
+    vendre à l'étranger. Les clients sont donc tous des entreprises
+    françaises → le SIRET (identifiant Insee, 14 chiffres) suffit, pas besoin
+    de gérer des identifiants d'entreprise étrangers ni une adresse hors France.
+  - **`siret` reste modifiable** (pas figé après l'inscription) : le SIRET
+    d'un établissement change quand l'entreprise **déménage** (le NIC, les
+    5 derniers chiffres, dépend de l'établissement) — le SIREN, lui, ne bouge
+    pas. D'où la re-vérification Sirene à chaque changement de SIRET sur
+    `/compte`. `entreprise` (raison sociale, liée au SIREN) est en revanche
+    stable → lecture seule.
+
 - **Modèle `User`** (`app/models/user.py`) — 6 nouvelles colonnes, **toutes
   nullable** (les comptes d'avant la session 9 n'ont pas ces données et doivent
   continuer à fonctionner) : `siret` (14), `numero` (20), `rue` (255),
