@@ -56,6 +56,8 @@
 - templates/ : HTML Jinja2
 - static/ : CSS/JS
 - static/js/portique.js : dessin SVG temps réel + géolocalisation
+- static/js/entreprise-form.js : aide saisie SIRET + adresse (inscription, /compte)
+- app/siret.py : vérification SIRET (base Sirene), voir session 9
 - migrations/ + alembic.ini : migrations de schéma de base (Alembic, voir
   session 8)
 
@@ -418,6 +420,92 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
     traitent `localhost` comme contexte sécurisé même en `http`. Un test via
     `TestClient` doit utiliser `base_url="https://testserver"`.
 
+### Identité professionnelle + adresse (session 9, branche feature/compte-entreprise)
+
+- **But** : ne garder que des professionnels identifiés — l'inscription
+  collecte nom, prénom, entreprise, **SIRET** et **adresse**, le SIRET est
+  vérifié auprès de la base Sirene. L'adresse est aussi éditable sur `/compte`.
+
+- **Modèle `User`** (`app/models/user.py`) — 6 nouvelles colonnes, **toutes
+  nullable** (les comptes d'avant la session 9 n'ont pas ces données et doivent
+  continuer à fonctionner) : `siret` (14), `numero` (20), `rue` (255),
+  `complement` (255), `code_postal` (5), `ville` (100). `entreprise` (déjà là
+  depuis la session 8) est réutilisé pour la raison sociale.
+  - Migration `7f738729c0ef` (`ADD COLUMN` ×6), idempotente sur le modèle de
+    `7239b9e48d12` (n'ajoute que les colonnes absentes). Testée base neuve +
+    copie de l'état prod ; `alembic check` OK. Elle part toute seule au
+    prochain déploiement (start command Railway `alembic upgrade head && ...`).
+  - Schémas : `UserCreate` (`app/schemas/user.py`) reçoit ces champs
+    (facultatifs au niveau Pydantic, obligatoires au niveau du formulaire) →
+    `user_manager.create()` les recopie dans la ligne via `create_update_dict()`,
+    un seul INSERT, pas de 2ᵉ session.
+
+- **`app/siret.py`** — `verify_siret(siret) -> SiretCheck` (async, `httpx`).
+  Interroge `https://recherche-entreprises.api.gouv.fr/search?q=<siret 14 chiffres>`
+  (pas de clé). Statuts : `ok` / `not_found` / `closed` / `api_unavailable`.
+  - `ok` : renvoie `raison_sociale` + `adresse` (numero/rue/complement/
+    code_postal/ville — depuis `siege` si le SIRET est celui du siège, sinon
+    parsée de la chaîne `adresse` des `matching_etablissements`).
+  - `not_found` / `closed` (établissement fermé `etat_administratif` F, ou
+    entreprise cessée C) → **bloquant** (`.blocking`).
+  - `api_unavailable` (timeout, 5xx, réseau) → **non bloquant**, `logger.warning`
+    (`logging.getLogger("instanote26.siret")`).
+
+- **`app/routers/entreprise.py`** — endpoints JSON pour le JS des formulaires
+  (jamais bloquants, la vérif qui fait foi est refaite au submit) :
+  - `GET /htmx/siret-info?siret=` → `{status, raison_sociale, adresse}`.
+  - `GET /htmx/communes?code_postal=` → `[{nom, code}]` (via
+    `geo.api.gouv.fr/communes`).
+  - `GET /htmx/rue-search?q=&citycode=` → `[{name, city, citycode}]` (API BAN,
+    `type=street`, scopée commune).
+  - Monté dans `main.py`.
+
+- **`static/js/entreprise-form.js`** — partagé inscription + `/compte`. Au blur
+  du champ `#siret` : appel `/htmx/siret-info`, retour visuel (`is-valid` /
+  `is-invalid` + message), et pré-remplissage de `#entreprise` (si vide) et des
+  champs adresse si l'API renvoie une adresse. `#code_postal` → `/htmx/communes`
+  → `#commune-select` (présélection si une seule) + met à jour `#citycode`
+  (hidden). `#rue` → autocomplétion BAN scopée `#citycode` dans
+  `#rue-suggestions`. `init()` idempotent (garde `dataset.efInit`) et rejoué sur
+  `htmx:afterSwap` (le fragment `/compte` est re-swappé).
+
+- **Inscription** (`app/routers/auth.py`, `templates/auth/register.html`) :
+  - Formulaire étoffé (email, mot de passe, prénom, nom, raison sociale, SIRET,
+    puis adresse). Message d'en-tête : service réservé aux professionnels du
+    bâtiment, infos nécessaires à l'identification de la clientèle pro.
+  - `POST /auth/register` : validation manuelle (tous obligatoires sauf
+    `complement`), formats (SIRET 14 chiffres, CP 5 chiffres), domaine jetable,
+    puis `verify_siret` — `not_found`/`closed` → ré-affiche le formulaire (400,
+    valeurs conservées via le dict `form`) ; `api_unavailable` → on continue.
+    `entreprise` stockée = `raison_sociale` de l'API si dispo, sinon la saisie.
+  - Succès → **connexion auto conservée** + redirect vers
+    `GET /auth/inscription-terminee` (nouvelle page « vérifiez votre boîte mail »
+    + bloc anti-spam entreprise : quarantaines MailInBlack / Altospam / Vade,
+    expéditeur = `EMAIL_FROM`). Vérif email toujours **non bloquante**
+    (cohérent session 7).
+
+- **`/compte`** (`app/routers/compte.py`, `templates/compte/_form.html`) :
+  - Lecture seule : email, offre (`plan`), **`entreprise`** (raison sociale
+    liée au SIREN — le champ n'a pas de `name`, il n'est pas soumis).
+  - Modifiables : nom, prénom, **SIRET**, adresse. Un SIRET **différent** de
+    celui en base est revérifié : `not_found`/`closed` → rien n'est enregistré,
+    bandeau rouge (réponse **200** — HTMX ne swappe pas les non-2xx) ;
+    `api_unavailable` → enregistré + bandeau d'avertissement.
+  - Le pré-remplissage adresse depuis le SIRET est fait côté JS (partagé avec
+    l'inscription).
+
+- **Comptes existants (avant session 9)** : `siret`/adresse à `NULL` →
+  `/compte` s'affiche normalement, champs vides, aucune erreur ; on peut
+  modifier l'adresse sans toucher au SIRET. Aucune route n'exige ces champs.
+
+- **Vérifié** (script bout-en-bout, base neuve + mocks `verify_siret` /
+  `send_email`) : inscription complète valide → compte + redirect ; SIRET
+  introuvable/fermé → bloqué, aucun compte ; API SIRET indisponible → non
+  bloqué ; champ obligatoire manquant → 400 ; `/htmx/siret-info` +
+  `/htmx/communes` (appel réel) OK ; compte ancien sans SIRET → `/compte` OK,
+  modif adresse persistée après relogin ; changement de SIRET sur `/compte`
+  (valide / invalide / API indispo) ; `entreprise` bien en lecture seule.
+
 ### Compactage formulaire (session 4, templates/calcul/form.html)
 - Les 3 cartes (Géométrie, Charges permanentes, Localisation) passent de côte-à-côte
   (col-lg-4) à empilées en pleine largeur (col-12), dans cet ordre — Localisation
@@ -485,15 +573,10 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   Volume). WeasyPrint : paquets apt de `railpack.json` confirmés suffisants.
 
 ### Objectifs prochaine session (back office + suivi d'usage + mentions légales)
-- **Warm-up / validation du pipeline Alembic** : ajouter des champs adresse à
-  `User` (ex. `adresse`, `code_postal`, `ville`, `pays` — nullable) et dérouler
-  le cycle complet une fois pour vérifier qu'Alembic « sait où il met ses
-  petits » : modifier `app/models/user.py` → `alembic revision --autogenerate
-  -m "champs adresse user"` → **relire** le fichier généré → `alembic upgrade
-  head` en local → commit → au déploiement Railway la migration passe toute
-  seule (start command `alembic upgrade head && uvicorn ...`). Les exposer dans
-  la page `/compte` au passage. Bonus : `alembic history` / `alembic current`
-  pour visualiser la chaîne de révisions.
+- ~~**Warm-up / validation du pipeline Alembic** : champs adresse sur `User`~~
+  → fait en **session 9** (migration `7f738729c0ef` : siret + adresse), le
+  cycle `revision --autogenerate` → relecture → `upgrade head` s'est déroulé
+  proprement, `alembic check` OK.
 - **Back office admin** : interface pour gérer les utilisateurs (lister,
   chercher, voir le détail, activer/désactiver, changer le `plan`, supprimer).
   - `User.is_superuser` existe déjà (hérité de fastapi-users) → s'en servir

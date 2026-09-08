@@ -1,23 +1,105 @@
 {% extends "base.html" %}
+{% block title %}Créer un compte — Instanote{% endblock %}
 {% block content %}
-<div class="row justify-content-center mt-5">
-  <div class="col-md-4">
-    <h2 class="mb-4">Créer un compte</h2>
+<div class="row justify-content-center mt-4">
+  <div class="col-md-8 col-lg-7">
+    <h2 class="mb-3">Créer un compte</h2>
+
+    <div class="alert alert-secondary small">
+      Instanote26 est réservé aux <strong>professionnels du bâtiment et de la
+      construction métallique</strong> (bureaux d'études, charpentiers,
+      constructeurs). Les informations d'entreprise et le numéro SIRET servent à
+      vérifier cette qualité et à répondre à nos obligations d'identification de
+      la clientèle professionnelle. Elles ne sont pas rendues publiques.
+    </div>
 
     {% if error %}
     <div class="alert alert-danger">{{ error }}</div>
     {% endif %}
 
     <form method="post" action="/auth/register">
+
+      <h3 class="h6 text-muted text-uppercase mt-4 mb-2">Identifiants</h3>
       <div class="mb-3">
-        <label for="email" class="form-label">Email</label>
-        <input type="email" class="form-control" id="email" name="email" required autofocus>
+        <label for="email" class="form-label">Email professionnel</label>
+        <input type="email" class="form-control" id="email" name="email" required
+               autocomplete="email" value="{{ form.get('email', '') }}">
       </div>
       <div class="mb-3">
         <label for="password" class="form-label">Mot de passe</label>
-        <input type="password" class="form-control" id="password" name="password" required minlength="8">
+        <input type="password" class="form-control" id="password" name="password"
+               required minlength="8" autocomplete="new-password">
+        <div class="form-text">8 caractères minimum.</div>
       </div>
-      <button type="submit" class="btn btn-primary w-100">Créer mon compte</button>
+
+      <h3 class="h6 text-muted text-uppercase mt-4 mb-2">Votre identité</h3>
+      <div class="row">
+        <div class="col-sm-6 mb-3">
+          <label for="prenom" class="form-label">Prénom</label>
+          <input type="text" class="form-control" id="prenom" name="prenom" required
+                 maxlength="100" value="{{ form.get('prenom', '') }}">
+        </div>
+        <div class="col-sm-6 mb-3">
+          <label for="nom" class="form-label">Nom</label>
+          <input type="text" class="form-control" id="nom" name="nom" required
+                 maxlength="100" value="{{ form.get('nom', '') }}">
+        </div>
+      </div>
+
+      <h3 class="h6 text-muted text-uppercase mt-4 mb-2">Entreprise</h3>
+      <div class="mb-3">
+        <label for="entreprise" class="form-label">Raison sociale</label>
+        <input type="text" class="form-control" id="entreprise" name="entreprise" required
+               maxlength="200" value="{{ form.get('entreprise', '') }}">
+      </div>
+      <div class="mb-3">
+        <label for="siret" class="form-label">SIRET</label>
+        <input type="text" class="form-control" id="siret" name="siret" required
+               inputmode="numeric" maxlength="17" autocomplete="off"
+               placeholder="14 chiffres" value="{{ form.get('siret', '') }}">
+        <div id="siret-feedback" class="form-text text-muted"></div>
+      </div>
+
+      <h3 class="h6 text-muted text-uppercase mt-4 mb-2">Adresse de l'entreprise</h3>
+      <div class="row">
+        <div class="col-4 col-sm-3 mb-3">
+          <label for="numero" class="form-label">N°</label>
+          <input type="text" class="form-control" id="numero" name="numero" required
+                 maxlength="20" value="{{ form.get('numero', '') }}">
+        </div>
+        <div class="col-8 col-sm-9 mb-3 position-relative">
+          <label for="rue" class="form-label">Voie</label>
+          <input type="text" class="form-control" id="rue" name="rue" required
+                 maxlength="255" autocomplete="off" value="{{ form.get('rue', '') }}">
+          <div id="rue-suggestions" class="list-group position-absolute w-100 shadow-sm"
+               style="z-index:1000"></div>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label for="complement" class="form-label">Complément d'adresse
+          <span class="text-muted fw-normal">(facultatif)</span></label>
+        <input type="text" class="form-control" id="complement" name="complement"
+               maxlength="255" value="{{ form.get('complement', '') }}">
+      </div>
+      <div class="row">
+        <div class="col-sm-4 mb-3">
+          <label for="code_postal" class="form-label">Code postal</label>
+          <input type="text" class="form-control" id="code_postal" name="code_postal" required
+                 inputmode="numeric" maxlength="5" pattern="[0-9]{5}"
+                 value="{{ form.get('code_postal', '') }}">
+          <div id="commune-help" class="form-text text-muted" hidden></div>
+        </div>
+        <div class="col-sm-8 mb-3">
+          <label for="ville" class="form-label">Ville</label>
+          <input type="text" class="form-control" id="ville" name="ville" required
+                 maxlength="100" value="{{ form.get('ville', '') }}">
+          <select id="commune-select" class="form-select form-select-sm mt-1" hidden></select>
+        </div>
+      </div>
+      <input type="hidden" id="citycode" value="">
+      <div id="adresse-note" class="form-text text-success" hidden></div>
+
+      <button type="submit" class="btn btn-primary w-100 mt-3">Créer mon compte</button>
     </form>
 
     <p class="mt-3 text-center">
@@ -25,4 +107,5 @@
     </p>
   </div>
 </div>
+<script src="/static/js/entreprise-form.js" defer></script>
 {% endblock %}

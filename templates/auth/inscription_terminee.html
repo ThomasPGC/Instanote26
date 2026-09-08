@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Compte créé — Instanote{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-5">
+  <div class="col-md-8 col-lg-6">
+
+    <div class="alert alert-success">
+      <h2 class="h4 mb-2">Votre compte est créé</h2>
+      <p class="mb-0">
+        {% if email %}
+        Un email de vérification vient d'être envoyé à <strong>{{ email }}</strong>.
+        {% else %}
+        Un email de vérification vient de vous être envoyé.
+        {% endif %}
+        Cliquez sur le lien qu'il contient pour confirmer votre adresse.
+      </p>
+    </div>
+
+    <div class="alert alert-light border">
+      <p class="mb-1"><strong>Vous ne recevez pas l'email ?</strong></p>
+      <ul class="mb-0 small">
+        <li>Patientez quelques minutes, puis vérifiez le dossier
+            « spam » / « courrier indésirable ».</li>
+        <li>En entreprise, le message peut être retenu par un filtre anti-spam
+            (MailInBlack, Altospam, Vade…) : consultez votre zone de quarantaine,
+            ou demandez à votre service informatique d'autoriser l'expéditeur{% if email_from %}
+            <strong>{{ email_from }}</strong>{% endif %}.</li>
+      </ul>
+    </div>
+
+    <p class="text-muted small">
+      La vérification de l'email n'est pas obligatoire pour utiliser le service :
+      vous pouvez commencer dès maintenant.
+    </p>
+
+    <a href="/calcul" class="btn btn-primary">Aller au calcul</a>
+    <a href="/compte" class="btn btn-outline-secondary ms-2">Mon compte</a>
+  </div>
+</div>
+{% endblock %}

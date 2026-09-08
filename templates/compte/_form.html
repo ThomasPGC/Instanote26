@@ -1,13 +1,23 @@
 {# Fragment : formulaire de profil.
-   Inclus tel quel par compte.html au chargement, et renvoyé seul par
-   POST /compte (HTMX) — il se remplace lui-même via hx-swap="outerHTML"
-   sur #compte-form, bandeau de confirmation compris. #}
+   Inclus par compte.html au chargement, et renvoyé seul par POST /compte
+   (HTMX) — il se remplace lui-même via hx-swap="outerHTML" sur #compte-form,
+   bandeaux compris. Les valeurs des champs modifiables viennent de `values`
+   (issu de l'utilisateur en base, ou de la saisie re-soumise en cas d'erreur).
+   L'autocomplétion SIRET / adresse est gérée par static/js/entreprise-form.js
+   (ré-initialisé après chaque swap HTMX). #}
 <div id="compte-form">
   {% if saved %}
   <div class="alert alert-success" role="alert">Profil enregistré.</div>
   {% endif %}
+  {% if siret_warning %}
+  <div class="alert alert-warning" role="alert">{{ siret_warning }}</div>
+  {% endif %}
+  {% if error %}
+  <div class="alert alert-danger" role="alert">{{ error }}</div>
+  {% endif %}
 
   <form hx-post="/compte" hx-target="#compte-form" hx-swap="outerHTML">
+
     <div class="mb-3">
       <label for="email" class="form-label">Email</label>
       <input type="email" class="form-control" id="email" value="{{ user.email }}" readonly>
@@ -24,21 +34,69 @@
       <div class="col-md-6 mb-3">
         <label for="prenom" class="form-label">Prénom</label>
         <input type="text" class="form-control" id="prenom" name="prenom"
-               maxlength="100" value="{{ user.prenom or '' }}">
+               maxlength="100" value="{{ values.prenom }}">
       </div>
       <div class="col-md-6 mb-3">
         <label for="nom" class="form-label">Nom</label>
         <input type="text" class="form-control" id="nom" name="nom"
-               maxlength="100" value="{{ user.nom or '' }}">
+               maxlength="100" value="{{ values.nom }}">
       </div>
     </div>
 
+    <h3 class="h6 text-muted text-uppercase mt-4 mb-2">Entreprise</h3>
     <div class="mb-3">
-      <label for="entreprise" class="form-label">Entreprise</label>
-      <input type="text" class="form-control" id="entreprise" name="entreprise"
-             maxlength="200" value="{{ user.entreprise or '' }}">
+      <label for="entreprise" class="form-label">Raison sociale</label>
+      <input type="text" class="form-control" id="entreprise"
+             value="{{ user.entreprise or '' }}" readonly>
+      <div class="form-text">Raison sociale liée à votre SIRET — non modifiable ici.</div>
+    </div>
+    <div class="mb-3">
+      <label for="siret" class="form-label">SIRET</label>
+      <input type="text" class="form-control" id="siret" name="siret"
+             inputmode="numeric" maxlength="17" autocomplete="off"
+             value="{{ values.siret }}">
+      <div id="siret-feedback" class="form-text text-muted"></div>
+      <div class="form-text">Un changement de SIRET est revérifié auprès de la base Sirene.</div>
     </div>
 
-    <button type="submit" class="btn btn-primary">Enregistrer</button>
+    <h3 class="h6 text-muted text-uppercase mt-4 mb-2">Adresse</h3>
+    <div class="row">
+      <div class="col-4 col-sm-3 mb-3">
+        <label for="numero" class="form-label">N°</label>
+        <input type="text" class="form-control" id="numero" name="numero"
+               maxlength="20" value="{{ values.numero }}">
+      </div>
+      <div class="col-8 col-sm-9 mb-3 position-relative">
+        <label for="rue" class="form-label">Voie</label>
+        <input type="text" class="form-control" id="rue" name="rue"
+               maxlength="255" autocomplete="off" value="{{ values.rue }}">
+        <div id="rue-suggestions" class="list-group position-absolute w-100 shadow-sm"
+             style="z-index:1000"></div>
+      </div>
+    </div>
+    <div class="mb-3">
+      <label for="complement" class="form-label">Complément d'adresse
+        <span class="text-muted fw-normal">(facultatif)</span></label>
+      <input type="text" class="form-control" id="complement" name="complement"
+             maxlength="255" value="{{ values.complement }}">
+    </div>
+    <div class="row">
+      <div class="col-sm-4 mb-3">
+        <label for="code_postal" class="form-label">Code postal</label>
+        <input type="text" class="form-control" id="code_postal" name="code_postal"
+               inputmode="numeric" maxlength="5" value="{{ values.code_postal }}">
+        <div id="commune-help" class="form-text text-muted" hidden></div>
+      </div>
+      <div class="col-sm-8 mb-3">
+        <label for="ville" class="form-label">Ville</label>
+        <input type="text" class="form-control" id="ville" name="ville"
+               maxlength="100" value="{{ values.ville }}">
+        <select id="commune-select" class="form-select form-select-sm mt-1" hidden></select>
+      </div>
+    </div>
+    <input type="hidden" id="citycode" value="">
+    <div id="adresse-note" class="form-text text-success" hidden></div>
+
+    <button type="submit" class="btn btn-primary mt-2">Enregistrer</button>
   </form>
 </div>

@@ -18,9 +18,22 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     `nom` / `prenom` / `entreprise` : champs de profil éditables depuis la page
     « Mon compte » (/compte). Nullable : un compte fraîchement créé n'a que son
     email, ces champs sont renseignés après coup (ou jamais).
+
+    `siret` + adresse (`numero` / `rue` / `complement` / `code_postal` /
+    `ville`) : identité professionnelle collectée à l'inscription (session 9).
+    **Tous nullable en base** : les comptes créés avant la session 9 n'ont pas
+    ces données et doivent continuer à fonctionner. Le caractère obligatoire
+    est imposé uniquement à la validation du formulaire d'inscription.
     """
     plan: Mapped[str] = mapped_column(String(10), default="S235", server_default="S235")
 
     nom: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     prenom: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     entreprise: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    siret: Mapped[Optional[str]] = mapped_column(String(14), nullable=True)
+    numero: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    rue: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    complement: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    code_postal: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    ville: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
