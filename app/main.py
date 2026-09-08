@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from app.middleware import CurrentUserMiddleware
-from app.routers import auth, calcul, compte, pdf_test
+from app.routers import auth, calcul, compte, entreprise, pdf_test
 from app.templating import templates
 
 # Le schéma de base est géré exclusivement par Alembic (`alembic upgrade head`,
@@ -25,6 +25,7 @@ app.include_router(calcul.router)
 app.include_router(pdf_test.router)
 app.include_router(auth.router)
 app.include_router(compte.router)
+app.include_router(entreprise.router)
 
 
 @app.get("/")
