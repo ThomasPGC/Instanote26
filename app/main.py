@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.admin import setup_admin
 from app.middleware import CurrentUserMiddleware
@@ -22,6 +23,18 @@ from app.templating import templates
 app = FastAPI(title="Instanote — Calcul charpente métallique")
 
 app.add_middleware(CurrentUserMiddleware)
+
+# Railway (comme tout hébergeur derrière un reverse proxy qui termine le TLS)
+# transmet la requête à l'app en HTTP interne, avec l'en-tête
+# `X-Forwarded-Proto: https`. Sans ce middleware, Starlette croit être en HTTP :
+# `request.url_for(...)` génère alors des URL absolues en `http://`. Les pages
+# qui s'en servent pour charger leur CSS/JS (le back office SQLAdmin) se
+# retrouvent avec des ressources bloquées par le navigateur (contenu mixte sur
+# une page HTTPS) -> affichage sans style. Ajouté en dernier => middleware le
+# plus externe, il corrige le scope avant tout le reste. `trusted_hosts="*"` :
+# on fait confiance au proxy Railway (le conteneur n'est pas exposé en direct).
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Back office admin (SQLAdmin) monté sur /admin — accès réservé aux comptes
