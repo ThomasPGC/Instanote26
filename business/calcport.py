@@ -37,6 +37,13 @@ IPE = Tuple_tous_ipe()
 # Désactivé par défaut : AUDIT_MODE=1 dans l'environnement pour l'activer.
 AUDIT_MODE = os.environ.get("AUDIT_MODE") == "1"
 
+# Backend de résolution structurelle utilisé par optimise_IPE (voir CLAUDE.md,
+# "Roadmap moteur de calcul", étape 1). "legacy" = solveur maison historique ;
+# "pynite" = bascule PyNite (business/solveur_pynite.py). Défaut "legacy" tant
+# que la validation croisée CTICM (étape 2) n'a pas statué ; positionner
+# MOTEUR_CALCUL=pynite dans l'environnement pour tester l'autre backend.
+MOTEUR_CALCUL = os.environ.get("MOTEUR_CALCUL", "legacy")
+
 
 GEOMTEST = {"hpot": 400, "portee": 1600, "pente": 0.25, "longueur": 2400,
             "entraxe": 600, "h_acro": 0}
@@ -465,6 +472,42 @@ def change_sections(barres, poteau, arba):
     barres[4].mod_attr_resist(jarret(arba))
 
 
+class _SolveurLegacy:
+    """Backend de résolution historique de optimise_IPE, extrait tel quel du
+    corps de la boucle (aucun changement numérique).
+
+    resoudre(poteau, arba) renvoie `resultats_non_pond` :
+        [(nom_cas, ens_resu_dict), ...] pour chaque cas élémentaire de `charges`,
+    où ens_resu_dict est le dict produit par calcport() (3 déplacements clés +
+    13 taux tx_*).
+    """
+
+    def __init__(self, geom, charges):
+        self.charges = charges
+        # Sections de départ arbitraires : elles sont écrasées par change_sections
+        # au premier appel à resoudre() — comme le faisait déjà la 1re itération
+        # de la boucle. Les vecteurs de force des cas non-CP ne dépendent pas de
+        # la section (seulement de la géométrie des barres) ; celui du cas CP est
+        # recalculé à chaque resoudre() pour le poids propre.
+        self.A, self.B = def_noeud_barres(geom, "IPE 80", "IPE 80")
+        self.F = [crea_matrice_force(len(self.A), self.B, cas) for cas in charges]
+
+    def resoudre(self, poteau, arba):
+        change_sections(self.B, poteau, arba)
+        K = crea_matrice_rigidite(self.A, self.B)
+        self.F[0] = crea_matrice_force(len(self.A), self.B, self.charges[0])
+        return [(cas[0], calcport(self.A, self.B, K, self.F[i], cas))
+                for i, cas in enumerate(self.charges)]
+
+
+def _make_solveur(geom, charges):
+    """Fabrique le backend de résolution selon MOTEUR_CALCUL."""
+    if MOTEUR_CALCUL == "pynite":
+        from solveur_pynite import SolveurPyNite   # import tardif : évite le cycle
+        return SolveurPyNite(geom, charges)
+    return _SolveurLegacy(geom, charges)
+
+
 def optimise_IPE(geom=GEOMTEST, charges=CHARGETEST):
     """trouve les IPE poteaux et traverse les plus légers
        exemple entrées
@@ -513,17 +556,13 @@ def optimise_IPE(geom=GEOMTEST, charges=CHARGETEST):
               f"-> départ boucle : poteau={ipe_pot}, traverse={ipe_arba}")
         print(f"[AUDIT OPTI] Seuils : tête_g<{critere_tete_g * 10:.2f}mm, "
               f"tête_d<{critere_tete_d * 10:.2f}mm, flèche<{critere_fleche * 10:.2f}mm, taux<=100%")
-    A, B = def_noeud_barres(geom, ipe_pot, ipe_arba)
-    list_matr_F = []
-    for cas in charges:
-        list_matr_F.append(crea_matrice_force(len(A), B, cas))
+    solveur = _make_solveur(geom, charges)
 
     comp_crit = False
     _audit_iter = 0
 
     while not comp_crit:
 
-        resultats_non_pond = []
         _audit_iter += 1
 
         if ipe_arba == "IPE 600":
@@ -554,12 +593,7 @@ def optimise_IPE(geom=GEOMTEST, charges=CHARGETEST):
         # print("IPE pour entrée calcport : ", ipe_pot, ipe_arba)
 
         # print("essai", ipe_pot, ipe_arba)
-        change_sections(B, ipe_pot, ipe_arba)
-        K = crea_matrice_rigidite(A, B)
-        list_matr_F[0] = crea_matrice_force(len(A), B, charges[0])
-        for i, cas in enumerate(charges):
-            # print(cas[0])
-            resultats_non_pond.append((cas[0], calcport(A, B, K, list_matr_F[i], cas)))
+        resultats_non_pond = solveur.resoudre(ipe_pot, ipe_arba)
 
         taux_max = 0
 
