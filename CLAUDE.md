@@ -767,6 +767,20 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   - développer un **changement d'email** (formulaire + confirmation par email
     envoyée sur la **nouvelle** adresse, pour éviter le vol de compte).
 
+### 4. Pied de poteau encastré — offre premium éventuelle
+- Le moteur ne calcule que des portiques à **pieds articulés** (choix figé,
+  cf. « Roadmap moteur de calcul »). L'encastrement de pied n'est pas au
+  programme : à l'échelle d'une étude de prix, le surcoût de fondation
+  (massifs, ancrages) dépasse en général l'économie de métal permise par
+  l'encastrement.
+- **Piste commerciale future** : proposer le pied encastré comme **option
+  d'un palier payant supérieur**, et/ou le rendre nécessaire le jour où on
+  voudrait prendre en compte des **ponts roulants** (efforts horizontaux de
+  chariot, qui changent la donne sur la dérive et rendent l'encastrement
+  souvent incontournable).
+- Rien à coder tant que ce n'est pas tranché ; noté ici pour ne pas
+  redécouvrir la question à chaque passage sur le moteur.
+
 ## Corrigés récemment
 - **Back office SQLAdmin sans aucun style en prod (fix `fix/admin-proxy-headers`)** :
   `/admin` s'affichait en HTML brut (le reste du site OK). Cause : Railway
@@ -827,11 +841,115 @@ en place. Prochaine phase : fiabiliser et enrichir le cœur de calcul avant
 d'ouvrir Stripe. Objectif : rigueur et validation à chaque étape, ne pas
 enchaîner sans avoir validé l'étape précédente.
 
+#### Positionnement produit du moteur — choix DURABLE, ne pas « corriger »
+
+Instanote26 fait du **prédimensionnement pour étude de prix**, pas de la
+vérification réglementaire complète aux Eurocodes. Sont **volontairement et
+durablement hors périmètre** du moteur (ce ne sont **pas des oublis** — ne
+pas les « ajouter » dans une session future sans validation explicite du
+user) :
+- **flambement** (poteaux, arbalétriers) et **déversement** (semelle
+  comprimée) : les bracons anti-dévers / anti-flambement réels sont non
+  significatifs à l'échelle d'un chiffrage ;
+- classification de section EC3 (classes 1/2/3/4), interactions M+N et M+V,
+  imperfections, analyse au 2ᵉ ordre / P-Δ.
+À rappeler explicitement à l'utilisateur, à trois endroits (cf. « Sur
+l'horizon » et « Mentions légales + disclaimer ») : **conditions générales**
+(à rédiger), **encart visible dans les résultats de calcul** (écran + PDF),
+et **acceptation à l'inscription**.
+
+#### Vocabulaire (à respecter partout : code, commentaires, docs, réponses)
+
+- On dit **renfort d'épaule** — jamais « renfort de genou ». Anglais :
+  **haunch**, jamais « knee ». La barre s'appelle historiquement `jarret()` /
+  « Jarret » dans le code (`business/calcport.py`) — terme charpente correct,
+  conservé tel quel.
+
+#### Décisions figées à la session 1 d'audit (verrouillées pour étapes 1 et 2)
+
+- **Pieds de poteau bi-articulés** — encastrement hors périmètre (cf. « Sur
+  l'horizon » §4 : piste offre premium / ponts roulants).
+- **Résolution Euler-Bernoulli** (déformation d'effort tranchant négligée
+  dans la raideur). PyNite v3 : `add_section` sans aires de cisaillement =
+  pas de terme Timoshenko, donc parité directe. Passage éventuel à
+  Timoshenko réévalué **seulement à l'étape 3** (discrétisation du renfort).
+- **Renfort d'épaule gelé** : 1 barre prismatique, section reconstituée à
+  hauteur `1,66 × h_traverse` (fonction `jarret()`), longueur = 10 % de la
+  portée en projection horizontale. Refonte en barres multiples à inertie
+  variable = **étape 3**, pas avant.
+- **S235 seul** (`fy = 235` en dur ; noter que le paramètre `lim_fy` de
+  `calcport()` est mort — non propagé à `calculer_et_verifier_resultats`, à
+  traiter à l'étape 8 avec S275/S355).
+- **Combinaisons `COMBI_DEPL` / `COMBI_EFF` inchangées** (facteurs actuels).
+  Si une erreur/oubli EC0 manifeste est repéré pendant l'implémentation :
+  **le signaler au user avant** toute correction.
+
 ### Étape 1 — Bascule vers PyNite
 - Créer branche refactor/pynite (déjà anticipée dans la structure business/)
 - Remplacer le solveur interne par PyNite pour la résolution structurelle
 - Le calcul doit rester pilotable via la même interface
   charge_et_sections(geom, locali, chpro) autant que possible
+
+#### Audit réalisé (session 1) — synthèse
+
+- **Méthode actuelle** : méthode des déplacements maison (raideur directe),
+  1er ordre linéaire, élément poutre-poteau 2D **Euler-Bernoulli** (3 DDL/nœud).
+  Modèle figé : **7 nœuds / 6 barres**, portique bipente symétrique, 1 poteau
+  par côté, pieds **articulés**. `E = 2 100 000 daN/cm²`, unités cm/daN.
+- **Renfort d'épaule** : barres B1 et B4 (`N1→N2`, `N4→N5`), section `jarret()`
+  = I reconstitué `b`/`tf`/`tw` de la traverse mais âme haute `1,66·h`,
+  **prismatique**, sur 10 % de portée. Résistance vérifiée au genou
+  (`tx_mom_renf_*`, Wpl du I `1,66·h`) et en bout (`tx_mom_pied_arba_*`, Wpl
+  traverse nue). Suspecté n°1 de l'écart croissant avec CTICM (hauteur `1,66h`
+  < `≈2h` réel au genou + renfort constant au lieu de dégressif → outil
+  sur-dimensionne). À contre-sens : l'absence de flambement/déversement rend
+  l'outil moins conservatif → l'écart net est une résultante, à décomposer en
+  étape 2.
+- **Résistance** : `taux = M / (Wpl · fy)` (γM0 = 1) + `V / (Avz · fy/√3)`,
+  superposés APRÈS résolution avec `COMBI_EFF` ; ELS via `COMBI_DEPL` contre
+  `hpot/150` (tête) et `portée/200` (flèche). Pas de N/M, pas d'instabilités.
+- **Point de couture retenu** : une fonction interne unique
+  `resoudre_cas(geom, sections, cas) -> ens_resu` (mêmes clés :
+  `depl_t_p_g/d`, `fleche_fait`, `tx_mom_*`, `tx_cis_*`).
+  `optimise_IPE`, `charge_et_sections`, `chargement_nv`, catalogue IPE,
+  combinaisons : **inchangés**. Flag `MOTEUR = "legacy" | "pynite"` pour faire
+  tourner les deux en parallèle (étape 2).
+- **Piège signe** : `calcport()` renvoie `D_avec_app` et
+  `barre.efforts_noeuds` avec un **signe globalement inversé** vs axes
+  physiques (cf. commentaire « les signes sont mauvais » dans
+  `crea_matrice_force`). Invisible en aval car `calculer_et_verifier_resultats`
+  est auto-cohérent et `optimise_IPE` prend des `abs()` partout. Le backend
+  PyNite utilise les signes physiques → `resoudre_cas` doit extraire
+  **déplacements ET efforts de PyNite** (jamais mélanger), en gardant une
+  convention unique entre les cas CP/NEI/VENT.
+
+#### Étape 1.a — validée
+
+- `PyNiteFEA==3.0.0` ajouté à `requirements.txt`.
+- Comparaison legacy vs PyNite sur 1 portique, cas CP seul, section constante,
+  **sans renfort d'épaule** (géométrie cas-01-compact) : après correction du
+  signe global, **les 21 DDL coïncident à la précision machine** (écart
+  relatif 0,000 %, résidus ~1e-15). Parité Euler-Bernoulli confirmée sans
+  bricolage (pas besoin de forcer `G`). Script jetable hors dépôt (scratchpad).
+- Conventions d'effort d'extrémité : le `M` en nœud i est inversé de signe
+  entre legacy et PyNite, le `M` en nœud j coïncide — mapping à faire
+  proprement à l'étape 1.e.
+
+#### Jeux de validation (étape 2) — entrées `charge_et_sections`
+
+Retrouvés depuis les PDF **Instanote26** de `validation/` (les PDF `… CTICM.pdf`
+sont la **référence externe** de comparaison, pas des entrées). Longueurs en
+cm, `pente` = ratio, `couv`/`divers` en daN/m². Sorties = algo actuel, à figer.
+
+| Cas | geom | localisation | cp | Algo actuel |
+|---|---|---|---|---|
+| cas-01-compact | hpot 350, portee 400, pente 0.10, longueur 2000, entraxe 400, h_acro 0 | Blois / dept 41 / alt 114 / IIIb | couv 10, divers 2 | poteau **IPE 160**, traverse **IPE 140**, taux **40,0 %**, flèche faîtage 2,8 mm (L/1404), dérive H/160, masse 168 kg |
+| cas-02-bas-large | hpot 500, portee 2200, pente 0.03, longueur 4000, entraxe 800, h_acro 100 | Millau / dept 12 / alt 631 / IIIa | couv 50, divers 20 | poteau **IPE 600**, traverse **IPE 600**, taux **100,0 %**, flèche faîtage 57,4 mm (L/383), dérive H/1057, masse 4174 kg |
+| cas-03-haut-fin | hpot 1000, portee 800, pente 0.10, longueur 4000, entraxe 500, h_acro 100 | Brest / dept 29 / alt 50 / cat. 0 | couv 20, divers 5 | poteau **IPE 600**, traverse **IPE 500**, taux **60,0 %**, flèche faîtage 2,0 mm (L/4044), dérive **H/161** (pilotée par la dérive), masse 3242 kg |
+
+`ancien_nom_comm` = `""` pour les trois. Reconstruction vérifiée : rejeu de
+ces entrées dans `charge_et_sections` → sorties identiques aux PDF au chiffre
+près.
 
 ### Étape 2 — Validation croisée (JALON BLOQUANT)
 - Choisir 2 ou 3 modèles de portique représentatifs (dont un cas limite)

@@ -5,6 +5,7 @@ httpx==0.28.1
 python-multipart==0.0.32
 numpy==2.5.0
 weasyprint==63.1
+PyNiteFEA==3.0.0  # solveur EF du moteur de calcul (bascule roadmap etape 1, branche refactor/pynite)
 
 # Authentification (fastapi-users)
 fastapi-users[sqlalchemy]
