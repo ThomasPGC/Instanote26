@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.admin import setup_admin
 from app.middleware import CurrentUserMiddleware
 from app.routers import auth, calcul, compte, entreprise, pdf_test
 from app.templating import templates
@@ -22,6 +23,10 @@ app = FastAPI(title="Instanote — Calcul charpente métallique")
 
 app.add_middleware(CurrentUserMiddleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Back office admin (SQLAdmin) monté sur /admin — accès réservé aux comptes
+# is_superuser, via le cookie d'auth fastapi-users (voir app/admin.py).
+setup_admin(app)
 
 app.include_router(calcul.router)
 app.include_router(pdf_test.router)

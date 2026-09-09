@@ -31,6 +31,9 @@
 
     <div class="d-flex align-items-center ms-auto">
     {% if request.state.user %}
+    {% if request.state.user.is_superuser %}
+    <a href="/admin" class="btn btn-warning btn-sm ms-2">Admin</a>
+    {% endif %}
     <a href="/compte" class="btn btn-outline-light btn-sm ms-2">Mon compte — {{ request.state.user.email }}</a>
     <a href="/auth/logout" class="btn btn-outline-light btn-sm ms-2">Déconnexion</a>
     {% else %}

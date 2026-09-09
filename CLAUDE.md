@@ -58,6 +58,7 @@
 - static/js/portique.js : dessin SVG temps réel + géolocalisation
 - static/js/entreprise-form.js : aide saisie SIRET + adresse (inscription, /compte)
 - app/siret.py : vérification SIRET (base Sirene), voir session 9
+- app/admin.py : back office admin (SQLAdmin) monté sur /admin, voir session 10
 - migrations/ + alembic.ini : migrations de schéma de base (Alembic, voir
   session 8)
 
@@ -519,6 +520,100 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   modif adresse persistée après relogin ; changement de SIRET sur `/compte`
   (valide / invalide / API indispo) ; `entreprise` bien en lecture seule.
 
+### Back office admin — SQLAdmin (session 10, branche feature/admin-backoffice)
+
+- **But** : interface d'administration des comptes utilisateurs (lister,
+  chercher, éditer, activer/désactiver, supprimer), montée avec la librairie
+  **SQLAdmin** — pas d'écrans faits main. `business/calcport.py` non touché.
+
+- **Dépendances** (`requirements.txt`) : `sqladmin==0.31.1`,
+  `itsdangerous==2.2.0` (requis par le `SessionMiddleware` que SQLAdmin ajoute
+  pour son auth ; pas tiré automatiquement). `wtforms` est tiré
+  automatiquement par sqladmin.
+
+- **Montage** : `app/admin.py` → `setup_admin(app)`, appelé dans
+  `app/main.py` juste après `add_middleware` / `mount("/static")`. SQLAdmin se
+  monte comme une sous-application Starlette sur **`/admin`**.
+
+- **Modèle `User` — 2 colonnes ajoutées** (`app/models/user.py`, migration
+  `93d735ca7575`, idempotente comme les précédentes) :
+  - `notes` (`Text`, nullable) : notes internes libres de l'admin (ex. raison
+    d'une désactivation). Jamais affiché à l'utilisateur.
+  - `created_at` (`DateTime`, `server_default=func.now()`, NOT NULL) : date
+    d'inscription, pour la colonne « Inscription » de la liste. Les comptes
+    créés avant la migration portent la date d'application de celle-ci. Part
+    tout seul au prochain déploiement (start command Railway
+    `alembic upgrade head && ...`).
+
+- **Authentification du back office** (`app/admin.py` → `AdminAuth`,
+  sous-classe de `sqladmin.authentication.AuthenticationBackend`) : **pas de
+  login séparé**. `authenticate()` relit le cookie JWT `instanote26_auth` de
+  fastapi-users (même logique que `app/middleware.py`) et exige
+  `is_active` **ET** `is_superuser`.
+  - non connecté → `RedirectResponse("/auth/login")`
+  - connecté mais pas admin → `PlainTextResponse(403)`
+  - `login()` / `logout()` de SQLAdmin sont court-circuités (renvoient vers
+    `/auth/login` / `/auth/logout`) : le formulaire de login interne de
+    SQLAdmin n'est jamais servi.
+  - Ce contrôle est appliqué par le décorateur `login_required` de SQLAdmin
+    sur **chaque** route de l'admin (liste, détail, édition, suppression,
+    actions) → taper une URL `/admin/...` à la main ne contourne rien
+    (vérifié : `/admin/user/list` en direct par un non-admin → 403).
+  - `secret_key` du `SessionMiddleware` = `INSTANOTE26_AUTH_SECRET` (réutilisé,
+    via `app.users.SECRET`).
+
+- **Vue `UserAdmin`** (`ModelView`, `app/admin.py`) :
+  - **Liste** : email, nom, prénom, entreprise, offre (`plan`), actif,
+    email vérifié, admin, date d'inscription. Tri par `created_at`
+    décroissant par défaut.
+  - **Recherche** : `column_searchable_list = [email, entreprise]`.
+  - **Édition** : tous les champs en texte libre **sauf `plan`** →
+    `form_overrides = {"plan": SelectField}` + `form_args` avec
+    `choices=[S235, S275, S355]` (liste déroulante fermée, pour qu'une faute
+    de frappe ne casse pas un futur accès payant). `hashed_password` exclu
+    de la liste, du détail (`column_details_exclude_list`) **et** du
+    formulaire (`form_excluded_columns`). `can_create = False` : la création
+    de compte passe par `/auth/register` (sinon mot de passe non hashé).
+  - **Activer / Désactiver** : deux actions groupées SQLAdmin (`@action`),
+    cases à cocher dans la liste → `is_active` True/False sur les comptes
+    sélectionnés (désactivation avec message de confirmation). fastapi-users
+    bloque déjà la connexion d'un compte `is_active=False`
+    (`app/routers/auth.py` teste `not user.is_active`, `current_active_user`
+    et le middleware aussi) — rien à ajouter côté login.
+  - **Suppression** : vraie suppression SQL (`DELETE FROM user`), pas de soft
+    delete — pour les demandes RGPD. `on_model_delete()` logge
+    `email` + `id` + date ISO **avant** l'effacement, dans le logger
+    `instanote26.admin` → trace applicative conservée même sans le compte.
+  - Traçabilité create/update/delete en plus : `Admin(audit_backend=
+    LoggingAuditBackend(logger_name="instanote26.admin.audit"))`.
+
+- **Navbar** (`templates/base.html`) : bouton « Admin » (jaune) affiché
+  uniquement si `request.state.user.is_superuser`.
+
+- **Se donner les droits admin** (pas d'UI self-service) — passer un compte
+  en superuser directement en base :
+  - En local (SQLite) :
+    ```
+    python -c "import sqlite3; c=sqlite3.connect('instanote26.db'); c.execute(\"UPDATE user SET is_superuser=1 WHERE email='tomajeu@gmail.com'\"); c.commit()"
+    ```
+  - En prod (Railway) : shell sur le service, même `UPDATE` sur
+    `/data/instanote26.db` (`sqlite3 /data/instanote26.db "UPDATE user SET
+    is_superuser=1 WHERE email='...'"`), ou via l'addon Postgres le jour où
+    on aura migré. Puis se reconnecter (le flag est lu depuis le cookie/DB à
+    la connexion).
+
+- **URL** : `/admin` (redirige vers `/admin/` puis la liste des utilisateurs).
+
+- **Vérifié** (script bout-en-bout `test_admin.py`, base SQLite temporaire,
+  `send_email` mocké — 30/30) : non-superuser → `/admin` et
+  `/admin/user/list` en direct → 403 ; anonyme → redirection `/auth/login` ;
+  superuser → `/admin` 200, liste (3 comptes, pas de `hashed_password`),
+  recherche email/entreprise, détail sans hash ; formulaire d'édition avec
+  `<select>` fermé pour `plan` ; `plan` S355 persiste, valeur hors liste
+  refusée ; `notes` sauvegardées et rechargées ; action Désactiver → login
+  ensuite refusé ; action Activer → login de nouveau OK ; suppression →
+  compte absent de la base + ligne de log `SUPPRESSION DEFINITIVE ... email=`.
+
 ### Compactage formulaire (session 4, templates/calcul/form.html)
 - Les 3 cartes (Géométrie, Charges permanentes, Localisation) passent de côte-à-côte
   (col-lg-4) à empilées en pleine largeur (col-12), dans cet ordre — Localisation
@@ -590,17 +685,12 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   → fait en **session 9** (migration `7f738729c0ef` : siret + adresse), le
   cycle `revision --autogenerate` → relecture → `upgrade head` s'est déroulé
   proprement, `alembic check` OK.
-- **Back office admin** : interface pour gérer les utilisateurs (lister,
-  chercher, voir le détail, activer/désactiver, changer le `plan`, supprimer).
-  - `User.is_superuser` existe déjà (hérité de fastapi-users) → s'en servir
-    comme drapeau admin : dépendance `current_superuser =
-    fastapi_users.current_user(active=True, superuser=True)` sur les routes
-    `/admin/...`, sinon 403.
-  - Passer un compte en admin : `UPDATE user SET is_superuser=1 WHERE
-    email=...` (script ponctuel ou via `alembic`/shell Railway), pas d'UI
-    self-service pour ça.
-  - Templates Jinja2 + HTMX comme le reste, nouveau routeur
-    `app/routers/admin.py`.
+- ~~**Back office admin** : interface pour gérer les utilisateurs~~ → fait en
+  **session 10** (branche `feature/admin-backoffice`) avec **SQLAdmin** monté
+  sur `/admin` (`app/admin.py`), auth adossée au cookie fastapi-users +
+  `is_superuser`. Voir la section « Back office admin — SQLAdmin » plus haut.
+  Choix vs. le plan initial : librairie SQLAdmin plutôt qu'un routeur Jinja2 +
+  HTMX fait main (`app/routers/admin.py` non créé).
 - **Suivi d'usage / analytics** : compter les calculs, la fréquence par
   utilisateur, les types de projet (portée, hauteur, couverture...).
   - Nouvelle table (ex. `calcul_log`) : `id`, `user_id` (nullable si calcul

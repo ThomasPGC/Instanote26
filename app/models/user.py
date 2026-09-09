@@ -1,7 +1,8 @@
+from datetime import datetime
 from typing import Optional
 
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID
-from sqlalchemy import String
+from sqlalchemy import DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.base import Base
@@ -24,6 +25,15 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     **Tous nullable en base** : les comptes créés avant la session 9 n'ont pas
     ces données et doivent continuer à fonctionner. Le caractère obligatoire
     est imposé uniquement à la validation du formulaire d'inscription.
+
+    `notes` : notes internes libres, réservées à l'administrateur (back office
+    SQLAdmin, session 10) — ex. raison d'une désactivation, remarque commerciale.
+    Jamais affiché à l'utilisateur.
+
+    `created_at` : date d'inscription (posée automatiquement à l'INSERT via
+    `server_default`). Ajoutée session 10 pour la colonne « Inscription » du
+    back office ; les comptes créés avant portent la date d'application de la
+    migration.
     """
     plan: Mapped[str] = mapped_column(String(10), default="S235", server_default="S235")
 
@@ -37,3 +47,9 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     complement: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     code_postal: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
     ville: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
