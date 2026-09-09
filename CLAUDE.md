@@ -933,17 +933,34 @@ secours (pas de retrait à l'étape 1.g).
 | **G** | Non-régression endpoint. | ✅ — `check_1g_non_regression.py` : 32 cas (30 aléa. + `PasDeSolutionIPE` + zonage KO), dict identique. `POST /htmx/calcul` → HTML même SHA256 ; `/htmx/calcul-pdf` → PDF valide des 2 côtés. |
 | **H** | Doc `CLAUDE.md`. | ✅ (ce bloc). |
 
-> **⚠️ Quirk legacy reproduit volontairement** (à signaler dans la comparaison
-> CTICM de l'étape 2, **ne pas « corriger »**) : `optimise_IPE` ne rappelle
-> `crea_matrice_force` que pour `charges[0]` (CP) avant la boucle des cas →
-> `barre.Sij` (efforts d'encastrement) reste figé sur CP, et
-> `calculer_et_verifier_resultats` reconstruit les efforts d'about de **tous**
-> les cas (NEI, vent…) avec le `Sij` du **seul cas CP**, combiné aux
-> déplacements du cas courant. `SolveurPyNite` utilise donc `fer_CP` pour tous
-> les cas. Sans cette reproduction, cas-03 donnait `taux_trav` 50 % au lieu de
-> 60 % (sections retenues inchangées, mais `taux_trav` = max post-`COMBI_EFF`
-> sensible). Ce mélange efforts-CP + déplacements-cas est un bug latent du
-> legacy qui contribue probablement à l'écart legacy/CTICM.
+> **⚠️ Bug latent du legacy, reproduit volontairement** (à signaler dans la
+> comparaison CTICM de l'étape 2, **ne pas « corriger » dans la bascule**).
+>
+> Bien distinguer deux choses :
+> - **Solve** : `calcport` résout `K·D = self.F[i]`, où `self.F[i]` (forces
+>   nodales équivalentes du cas *i*) est calculé une fois dans `__init__` avec
+>   le `Sij_i` du cas *i*. Le `Sij` d'un cas de charge externe ne dépend pas
+>   de la section → ce cache entre itérations IPE est **légitime**, et les
+>   **déplacements sont corrects par cas** (donc ELS : flèche/dérive justes).
+> - **Post-traitement** : `calculer_et_verifier_resultats`
+>   ([calcport.py:321](business/calcport.py#L321), [:332](business/calcport.py#L332))
+>   reconstruit `efforts_noeuds = −barre.Sij + k_barre·d_rot`. Or `barre.Sij`
+>   est un **attribut mutable**, et dans `optimise_IPE` / `_SolveurLegacy.resoudre`
+>   le **seul** `crea_matrice_force` appelé dans la boucle est celui du CP
+>   ([calcport.py:498](business/calcport.py#L498)). Résultat : pour les 8 cas
+>   élémentaires d'**une même résolution**, `calculer_et_verifier_resultats`
+>   lit toujours `Sij_CP`. Les efforts internes (donc les 13 `tx_*`, donc
+>   l'ELU) de NEI et VENT combinent `Sij_CP` + déplacements du cas courant →
+>   **physiquement incohérents**. Cas le plus net : `NEI_ACCI` zone A1
+>   (`ch_bar_acci = 0` → `Sij` correct = 0) reçoit quand même `Sij_CP ≠ 0`.
+>
+> Trace vérifiée (cas-03, B2 traverse) : `Sij` lu pour **tous** les cas =
+> `[40,17 ; 401,70 ; 21530,6]` (CP) ; `Sij` correct du vent = `[0 ; 310,5 ;
+> 16641,7]`. `SolveurPyNite` utilise donc `fer_CP` pour tous les cas (parité).
+> Sans cette reproduction, cas-03 donnait `taux_trav` 50 % au lieu de 60 %
+> (sections retenues inchangées sur ~50 cas testés, mais non garanti — le test
+> `abs(tx) > 1` du rejet ELU s'appuie sur ces `tx_*` pollués). Contribue
+> probablement à l'écart legacy/CTICM.
 
 Variable d'env **`MOTEUR_CALCUL`** : absente/`legacy` → moteur historique ;
 `pynite` → `business/solveur_pynite.py`. Non définie sur Railway pour
@@ -1237,6 +1254,18 @@ près.
 - Revue exhaustive des configurations de vent (zones, catégories de terrain,
   coefficients de forme selon géométrie, faces au vent/sous le vent)
 - Cas de test dédiés par configuration
+- **Affiner la répartition des charges N/V** (aujourd'hui : pression `qpz`
+  constante par barre + « surplus » des zones de rive F/G/J et de l'accumulation
+  neige d'acrotère injectés en **charges ponctuelles aux nœuds** N1/N2/N3/…
+  via `repart_charge_surpl` / `ch_noeud_accu_*` — cf. `chargement_nv.py`).
+  Piste : utiliser les charges **réparties trapézoïdales / partielles**
+  natives de PyNite (`add_member_dist_load` avec `x1`/`x2` et `w1 ≠ w2`) pour
+  représenter directement le champ de pression variable le long de la barre,
+  au lieu de l'approximation « uniforme + corrections nodales ».
+- Simplifications actuelles à statuer : `μ2` neige (0,8 constant ≤ 30°),
+  pas de neige asymétrique / demi-charge / glissante ; paire nodale neige
+  `40·entraxe` d'origine non documentée dans le code ; zones vent F/G/H/I/J
+  réduites à ~4 valeurs par barre.
 
 ### Étape 5 — Modèle d'appentis
 - Reprendre l'ancien modèle back-office si dispo (portique à un seul arbalétrier)
