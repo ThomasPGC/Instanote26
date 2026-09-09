@@ -931,9 +931,111 @@ et **acceptation à l'inscription**.
   signe global, **les 21 DDL coïncident à la précision machine** (écart
   relatif 0,000 %, résidus ~1e-15). Parité Euler-Bernoulli confirmée sans
   bricolage (pas besoin de forcer `G`). Script jetable hors dépôt (scratchpad).
-- Conventions d'effort d'extrémité : le `M` en nœud i est inversé de signe
-  entre legacy et PyNite, le `M` en nœud j coïncide — mapping à faire
-  proprement à l'étape 1.e.
+- Conventions d'effort d'extrémité : voir « Règle de signe » ci-dessous.
+
+#### Étape 1.b — validée
+
+Renfort d'épaule **réintroduit à l'identique** (`jarret()` 1,66·h, 10 % de
+portée, barres B1/B4). Legacy vs PyNite (1 modèle, résolution **par cas
+élémentaire**, sans combinaison ELU/ELS PyNite), sur cas-01-compact, avec
+le **cas CP** *et* un **cas perpendiculaire synthétique** :
+- 21 DDL : écart relatif 0,000 %, résidu ~1e-16 ;
+- efforts d'extrémité des 6 barres (N, V, M aux 2 nœuds) : écart ~1e-10.
+La règle de signe ci-dessous tient **à l'identique pour la charge
+perpendiculaire** → c'est une convention, pas une correction propre à la
+gravité (donc robuste quand le vent entrera en 1.d).
+
+#### Règle de signe legacy ↔ PyNite (à appliquer telle quelle en 1.c–1.f)
+
+Le backend PyNite adopte **les conventions PyNite partout** ; on ne
+reproduit jamais les signes du legacy. Deux écarts, de natures différentes :
+
+1. **Défaut de signe global du legacy** (commentaire « les signes sont
+   mauvais » dans `crea_matrice_force`) : le vecteur `D_avec_app` de
+   `calcport()` est l'**opposé** du déplacement physique. Invisible en aval
+   car tout consommateur ré-emploie ce même vecteur, ou prend `abs()`.
+   → `resoudre_cas` pose `depl_t_p_g = −DX(N1)`, `depl_t_p_d = −DX(N5)`,
+     `fleche_fait = −DY(N3)` (PyNite) — le « − » appliqué **une seule fois**,
+     à l'extraction des déplacements.
+
+2. **Effort d'about (« barre → nœud ») vs effort interne N(x)/V(x)/M(x)** :
+   `efforts_noeuds` du legacy sont des efforts d'about ; PyNite
+   `axial/shear/moment(x)` sont les diagrammes internes. Identité de
+   statique, vraie pour **tout** chargement (gravité, vent perpendiculaire,
+   charges nodales) :
+
+   | legacy `efforts_noeuds[b]` | PyNite |
+   |---|---|
+   | `[Nᵢ, Vᵢ, Mᵢ]` (nœud origine `i`) | `[ −N(0), −V(0), −M(0) ]` |
+   | `[Nⱼ, Vⱼ, Mⱼ]` (nœud fin `j`)     | `[ +N(L), +V(L), +M(L) ]` |
+
+   Le « − » côté `i` n'est **pas** lié à l'orientation de la charge : c'est
+   « effort interne à la coupure `i` = −(effort que la barre exerce sur le
+   nœud `i`) ». Côté `j`, la normale sortante de la coupure pointe déjà
+   selon +x local → pas de changement de signe. Vérifié bit à bit sur
+   gravité **et** perpendiculaire (étape 1.b).
+
+3. **Invariance pour `optimise_IPE`** : chaque clé `tx_*` cible **un seul**
+   about de barre → le map applique un ±1 **fixe par clé, identique pour
+   tous les cas élémentaires**. Donc `Σ_cas (combi · tx)` puis `abs()` (déjà
+   fait par `optimise_IPE`), et les tests `abs()` sur les déplacements, sont
+   **prouvablement invariants** au map. Le map ne sert qu'à la comparaison
+   **cas par cas** de l'étape 1.e.
+
+`resoudre_cas` extrait donc **déplacements ET efforts de PyNite** (jamais un
+mélange legacy/PyNite), applique (1) aux déplacements et (2) aux efforts.
+
+#### Étape 1.b — profilage (⚠ point bloquant, à trancher avant 1.c)
+
+Machine de dev, médianes sur 25–200 exécutions. Legacy =
+`charge_et_sections()` actuel complet (boucle `optimise_IPE` réelle).
+
+| Cas | itér. IPE | **legacy** | PyNite natif¹ | PyNite assembleur² |
+|---|---|---|---|---|
+| cas-01-compact | 13 | **32 ms** | ~420 ms (×13) | ~38 ms (×1,2) |
+| cas-02-bas-large | 12 | **16 ms** | ~295 ms (×18) | ~32 ms (×2,0) |
+| cas-03-haut-fin | 74 | **106 ms** | ~2400 ms (×22) | ~195 ms (×1,8) |
+
+¹ **PyNite natif** = 1 modèle, 1 combo PyNite par cas élémentaire
+  (`add_load_combo`, facteur 1), `analyze_linear()` puis lecture via
+  `member.moment()/shear()`. Coût mesuré par résolution :
+  `analyze_linear` **≈ 21 ms** + extraction **≈ 10 ms**, × nb d'itérations
+  IPE. `sparse=False` ≈ `sparse=True` (21 DDL : la conversion CSR coûte plus
+  qu'elle ne rapporte). Le coût **n'est pas** dans l'algèbre (assemblage
+  `Ke` 0,5 ms, `spsolve` < 0,1 ms) mais dans l'orchestration Python de
+  `analyze_linear` (`_calc_reactions`, `_store_displacements`,
+  partition/renumber) et dans `member.*()` qui reconstruit les diagrammes.
+
+² **PyNite assembleur** = PyNite fournit l'assemblage `Ke`, la conversion
+  charges → `FER`/`P`, le catalogue de sections ; on pilote soi-même
+  partition + `scipy.linalg.lu_factor` (1×/itération) + `lu_solve` par cas,
+  **RHS des cas non-CP mis en cache** entre itérations (seul CP recalculé,
+  pour le poids propre), efforts d'about par transformation locale.
+  Mesuré : **≈ 2,3–2,6 ms/itération**. Contourne `analyze()`.
+
+**Conclusion** : « PyNite natif » dégrade l'endpoint HTMX `/htmx/calcul`
+d'un facteur **13–22** (jusqu'à 2,4 s) → **inacceptable en prod**.
+« PyNite assembleur » tient (**×1,2–2**, < 200 ms) mais s'appuie sur des
+méthodes internes de PyNite (`Ke`, `FER`, `P`) et ré-implémente
+partition/solve/récupération.
+
+**Décision à prendre (user) avant 1.c** — 3 formes :
+- **(A) PyNite assembleur** : perf OK, dépend d'internes PyNite (mitigé par
+  le pin `==3.0.0`).
+- **(B) PyNite natif** : le plus « propre » / transparent, mais échoue la
+  barre de perf — sauf endpoint asynchrone + cache, ou réduction forte du
+  nombre d'itérations `optimise_IPE`.
+- **(C) Solveur maison allégé** : garder l'assemblage maison du legacy,
+  nettoyé + signe corrigé + documenté ; PyNite (natif, hors ligne) devient
+  l'**oracle de validation croisée** (étape 2) + test de non-régression CI.
+  Perf ×1. « Bascule » = réécriture validée contre PyNite, pas PyNite dans
+  le chemin de requête.
+
+**Observation annexe** (hors périmètre étape 1, touche la logique
+d'optimisation) : `optimise_IPE` fait **74 itérations** sur cas-03
+(recherche gloutonne : +1 taille à la fois, reset traverse à poteau−4 à
+chaque bump de poteau). Une recherche plus fine diviserait le temps par
+3–5 pour **tous** les backends.
 
 #### Jeux de validation (étape 2) — entrées `charge_et_sections`
 
