@@ -903,7 +903,7 @@ avant la suivante. Scripts de parité : `validation/pynite_check/`.
 | **1.a** | Modèle PyNite jetable, 1 portique, cas CP seul, section constante, **sans renfort d'épaule** ; comparer `D` nœud par nœud au legacy. | ✅ **fait** — 21 DDL identiques (précision machine) après règle de signe. `check_1a_sans_jarret.py`. |
 | **1.b** | Renfort d'épaule **à l'identique** (`jarret()` 1,66·h, 10 % portée) ; comparer 21 DDL + efforts d'about des 6 barres. + **profilage** (bloquant) et **règle de signe**. | ✅ **fait** — écart nul (CP + cas perpendiculaire). Profilage → décision backend = option A. `check_1b_renfort_epaule.py`, `check_1b_profilage.py`. |
 | **1.c** | Reproduire les **CL bi-articulées** N0/N6 + blocage des DDL hors-plan (PyNite est 3D) ; réactions et `D` identiques. | ✅ **fait** — 17 DDL libres = réduction legacy ; `D` **et** réactions à 0,000 % sur les 8 cas élémentaires de cas-03 (dont vent). `check_1c_cl_et_vent.py`. |
-| **1.d** | Porter les **3 familles de charges** (CP + poids propre uniquement en CP ; neige projetée ; vent perpendiculaire) **et** les charges ponctuelles `cas[2]`, avec la même convention de signe ; efforts de barre identiques cas par cas. | 🔸 **en cours** — largement dé-risqué par 1.c (les 3 familles y sont déjà portées et `D`/réactions matchent). Reste : formaliser le signe des charges **nodales** (moments d'acrotère `VEN_G_D`, nœuds d'accumulation neige) et le confirmer sur un cas qui les sollicite fortement. |
+| **1.d** | Porter les **3 familles de charges** (CP + poids propre uniquement en CP ; neige projetée ; vent perpendiculaire) **et** les charges ponctuelles `cas[2]`, avec la même convention de signe ; efforts de barre identiques cas par cas. | ✅ **fait** — efforts d'about des 6 barres identiques (0,000 %) sur **les 22 cas élémentaires** des 3 jeux, familles CP/NEI/VEN et charges nodales incluses. `check_1d_familles_charges.py`. |
 | **1.e** | Extraire Mi/Mj, Vi/Vj, déplacements → recalculer les `tx_*` avec la **même formule** `M/(Wpl·fy)`, γM0=1 ; taux identiques cas par cas. | ⬜ à faire (règle de signe 2 déjà établie et vérifiée). |
 | **1.f** | Rebrancher `resoudre_cas` (PyNite) dans `optimise_IPE` ; exécuter les **3 jeux de validation** + cas aléatoires ; **sections retenues identiques**. | ⬜ à faire. Flag `MOTEUR = "legacy" | "pynite"` pour tourner les deux en parallèle (étape 2). |
 | **1.g** | Nettoyage : retirer le code legacy **seulement après accord explicite**, ou le garder sous `MOTEUR="legacy"` pour l'étape 2. | ⬜ à faire (dernier). |
@@ -1093,9 +1093,30 @@ Backend assembleur (option A) : `m.Ke()` de PyNite, puis partition /
 **Scripts de parité versionnés** : `validation/pynite_check/` — un script
 autonome et figé par sous-étape (`check_1a_sans_jarret.py`,
 `check_1b_renfort_epaule.py`, `check_1b_profilage.py`,
-`check_1c_cl_et_vent.py`), rejouables (sortie `0`/`1`). À relancer lors de
-toute montée de version de PyNite ou refactor du moteur. Voir le `README.md`
-du dossier.
+`check_1c_cl_et_vent.py`, `check_1d_familles_charges.py`), rejouables
+(sortie `0`/`1`). À relancer lors de toute montée de version de PyNite ou
+refactor du moteur. Voir le `README.md` du dossier.
+
+#### Étape 1.d — validée (portage des familles de charges)
+
+Portage des charges de `chargement_nv` dans PyNite (identique dans
+`check_1c` / `check_1d` / futur `resoudre_cas`) :
+- **CP** : UDL verticale **globale** `q_k = charge_k − A_k·7,85e-3`
+  (poids propre ajouté **uniquement** dans le cas CP, comme le legacy) ;
+- **NEI** : UDL verticale globale `q_k = charge_k·cos(α_k)` (neige projetée,
+  comme `calcSij_vert(w·cos α)`) ;
+- **VEN** : UDL **perpendiculaire** (repère local y) `q_k = charge_k` (comme
+  `calcSij_perp`) ;
+- **charges ponctuelles `cas[2]`** = `[Fx, Fy, Mz]` par nœud →
+  `add_node_load(+v)`. Le legacy fait `F −= cas[2]` ; combiné au flip global
+  de `crea_matrice_force`, l'équivalent physique PyNite est `+v` (règle de
+  signe 1).
+
+Vérifié : efforts d'about des 6 barres `[Ni,Vi,Mi,Nj,Vj,Mj]` identiques au
+legacy (**0,000 %**, règle de signe 2) sur **les 22 cas élémentaires** des 3
+jeux `validation/` (cas-01/02/03) — familles CP / NEI / VEN, avec charges
+nodales (moments d'acrotère `VEN_G_D`, points de charge neige aux nœuds 2/5,
+accumulation) exercées et validées.
 
 #### Jeux de validation (étape 2) — entrées `charge_et_sections`
 
