@@ -904,7 +904,7 @@ avant la suivante. Scripts de parité : `validation/pynite_check/`.
 | **1.b** | Renfort d'épaule **à l'identique** (`jarret()` 1,66·h, 10 % portée) ; comparer 21 DDL + efforts d'about des 6 barres. + **profilage** (bloquant) et **règle de signe**. | ✅ **fait** — écart nul (CP + cas perpendiculaire). Profilage → décision backend = option A. `check_1b_renfort_epaule.py`, `check_1b_profilage.py`. |
 | **1.c** | Reproduire les **CL bi-articulées** N0/N6 + blocage des DDL hors-plan (PyNite est 3D) ; réactions et `D` identiques. | ✅ **fait** — 17 DDL libres = réduction legacy ; `D` **et** réactions à 0,000 % sur les 8 cas élémentaires de cas-03 (dont vent). `check_1c_cl_et_vent.py`. |
 | **1.d** | Porter les **3 familles de charges** (CP + poids propre uniquement en CP ; neige projetée ; vent perpendiculaire) **et** les charges ponctuelles `cas[2]`, avec la même convention de signe ; efforts de barre identiques cas par cas. | ✅ **fait** — efforts d'about des 6 barres identiques (0,000 %) sur **les 22 cas élémentaires** des 3 jeux, familles CP/NEI/VEN et charges nodales incluses. `check_1d_familles_charges.py`. |
-| **1.e** | Extraire Mi/Mj, Vi/Vj, déplacements → recalculer les `tx_*` avec la **même formule** `M/(Wpl·fy)`, γM0=1 ; taux identiques cas par cas. | ⬜ à faire (règle de signe 2 déjà établie et vérifiée). |
+| **1.e** | Extraire Mi/Mj, Vi/Vj, déplacements → recalculer les `tx_*` avec la **même formule** `M/(Wpl·fy)`, γM0=1 ; taux identiques cas par cas. | ✅ **fait** — les 13 `tx_*` identiques **au signe près** (0,000 %) sur les 22 cas élémentaires ; moments critiques du renfort d'épaule vérifiés en détail + gouvernant post-`COMBI_EFF`. `check_1e_taux.py`. |
 | **1.f** | Rebrancher `resoudre_cas` (PyNite) dans `optimise_IPE` ; exécuter les **3 jeux de validation** + cas aléatoires ; **sections retenues identiques**. | ⬜ à faire. Flag `MOTEUR = "legacy" | "pynite"` pour tourner les deux en parallèle (étape 2). |
 | **1.g** | Nettoyage : retirer le code legacy **seulement après accord explicite**, ou le garder sous `MOTEUR="legacy"` pour l'étape 2. | ⬜ à faire (dernier). |
 
@@ -1093,7 +1093,8 @@ Backend assembleur (option A) : `m.Ke()` de PyNite, puis partition /
 **Scripts de parité versionnés** : `validation/pynite_check/` — un script
 autonome et figé par sous-étape (`check_1a_sans_jarret.py`,
 `check_1b_renfort_epaule.py`, `check_1b_profilage.py`,
-`check_1c_cl_et_vent.py`, `check_1d_familles_charges.py`), rejouables
+`check_1c_cl_et_vent.py`, `check_1d_familles_charges.py`,
+`check_1e_taux.py`), rejouables
 (sortie `0`/`1`). À relancer lors de toute montée de version de PyNite ou
 refactor du moteur. Voir le `README.md` du dossier.
 
@@ -1117,6 +1118,30 @@ legacy (**0,000 %**, règle de signe 2) sur **les 22 cas élémentaires** des 3
 jeux `validation/` (cas-01/02/03) — familles CP / NEI / VEN, avec charges
 nodales (moments d'acrotère `VEN_G_D`, points de charge neige aux nœuds 2/5,
 accumulation) exercées et validées.
+
+#### Étape 1.e — validée (taux de travail cas par cas)
+
+Les 13 `tx_*` de `calculer_et_verifier_resultats` recalculés depuis les
+efforts PyNite avec la **formule legacy exacte** (`M/(Wpl·fy/10)/100`,
+`fy = 235`, γM0 implicite = 1 ; `Wpl`/`Avz` lus sur le catalogue — B1/B4 =
+`Wpl` du jarret 1,66·h). Comparaison **au signe près** (pas `abs()`) :
+- les 13 `tx_*` identiques au legacy à **0,000 %** sur les 22 cas
+  élémentaires des 3 jeux ;
+- **moments critiques du renfort d'épaule** (`tx_mom_renf_g/d`,
+  `tx_mom_pied_arba_g/d`) : détaillés cas élémentaire par cas élémentaire —
+  aucun écart. Ex. cas-03 / `VEN_G_D_pos_neg` :
+  `tx_mom_pied_arba_d = 36,103 %` (legacy) = `36,103 %` (PyNite) ;
+- **taux critique gouvernant après `COMBI_EFF`** (bonus bout-en-bout,
+  `|Σ combi·tx|` sur les 6 combos ELU × cas de vent) : identique aussi —
+  cas-01 `pied_arba_d` 36,18 % ; cas-02 `renf_g/d` 50,77 % ; cas-03
+  `pied_arba_d` 54,92 %.
+- **Observation métier** (parité OK, c'est du legacy fidèlement reproduit) :
+  dans les cas pilotés par le vent, `tx_mom_pied_arba_*` (arbalétrier juste
+  après le jarret, `Wpl` traverse nue) est nettement > `tx_mom_renf_*`
+  (genou, sur le `Wpl` élargi 1,66·h). Le point qui « mord » dans la zone
+  d'épaule est donc l'arbalétrier **en sortie de jarret**, pas le genou —
+  cohérent avec l'hypothèse d'audit (le renfort constant 1,66·h sur-résiste
+  au genou et reporte la demande sur la traverse courante).
 
 #### Jeux de validation (étape 2) — entrées `charge_et_sections`
 
