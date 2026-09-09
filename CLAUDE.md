@@ -1019,23 +1019,58 @@ d'un facteur **13–22** (jusqu'à 2,4 s) → **inacceptable en prod**.
 méthodes internes de PyNite (`Ke`, `FER`, `P`) et ré-implémente
 partition/solve/récupération.
 
-**Décision à prendre (user) avant 1.c** — 3 formes :
-- **(A) PyNite assembleur** : perf OK, dépend d'internes PyNite (mitigé par
-  le pin `==3.0.0`).
-- **(B) PyNite natif** : le plus « propre » / transparent, mais échoue la
-  barre de perf — sauf endpoint asynchrone + cache, ou réduction forte du
-  nombre d'itérations `optimise_IPE`.
-- **(C) Solveur maison allégé** : garder l'assemblage maison du legacy,
-  nettoyé + signe corrigé + documenté ; PyNite (natif, hors ligne) devient
-  l'**oracle de validation croisée** (étape 2) + test de non-régression CI.
-  Perf ×1. « Bascule » = réécriture validée contre PyNite, pas PyNite dans
-  le chemin de requête.
+**Décision (user) — option A retenue : PyNite assembleur.** PyNite fournit
+l'assemblage `Ke`, le catalogue de sections et la conversion charges →
+`FER`/`P` ; `resoudre_cas` pilote lui-même la partition (CL), la
+factorisation (`scipy.linalg.lu_factor`, 1×/itération IPE) et le `lu_solve`
+par cas élémentaire, RHS des cas non-CP mis en cache entre itérations.
+Motifs : perf ×1,2–2 (B rejeté à ×13–22) ; on garde le bénéfice structurel
+qui justifie la bascule (assemblage `Ke` + sections + charges→efforts
+réutilisables tels quels pour le jarret discrétisé de l'étape 3 et le
+portique asymétrique de l'étape 6, là où C obligerait à réécrire
+l'assemblage maison à chaque nouvelle géométrie) ; argument externe (se
+prévaloir de PyNiteFEA, lib EF établie, comme caution technique).
+
+> ⚠️ **Politique de version PyNite** (risque accepté de l'option A —
+> dépendance à des méthodes semi-internes `Ke` / `FER` / `P`) : PyNite est
+> **piqué à `==3.0.0`** dans `requirements.txt`. Toute montée de version est
+> un **projet à part entière**, pas une mise à jour de routine : re-run
+> complet des tests de non-régression contre `validation/` (sorties
+> identiques au chiffre près) **avant** merge. Ne jamais bumper PyNite dans
+> un `pip install --upgrade` groupé.
+
+Alternatives écartées : **(B) PyNite natif** (`analyze()` + combos) — le
+plus propre mais ×13–22 ; **(C) solveur maison allégé** + PyNite seulement
+comme oracle hors ligne — perf ×1 mais assemblage maison à maintenir pour
+chaque géométrie future.
 
 **Observation annexe** (hors périmètre étape 1, touche la logique
 d'optimisation) : `optimise_IPE` fait **74 itérations** sur cas-03
 (recherche gloutonne : +1 taille à la fois, reset traverse à poteau−4 à
 chaque bump de poteau). Une recherche plus fine diviserait le temps par
 3–5 pour **tous** les backends.
+
+#### Étape 1.c — validée (CL bi-articulées + blocage hors-plan)
+
+Backend assembleur (option A) : `m.Ke()` de PyNite, puis partition /
+`scipy.linalg.lu_factor` / `lu_solve` pilotés dans `resoudre_cas`.
+- Masque de DDL libres déduit des flags `def_support` : N0/N6 → `{RZ}`
+  seul (DX, DY bloqués = rotule) ; N1–N5 → `{DX, DY, RZ}` ; `DZ, RX, RY`
+  bloqués partout (modèle plan). Total **17 DDL libres**, identiques à la
+  réduction du legacy (`rz N0 ; dx,dy,rz N1..N5 ; rz N6`).
+- Sur cas-03-haut-fin (asymétrique, avec vent), **les 8 cas élémentaires**
+  (CP, NEI, NEI_ACCI, 4× VEN long-pan, VEN pignon) : déplacements **0,000 %**
+  d'écart, **réactions d'appui 0,000 %** (au signe global près, règle 1 —
+  `R_legacy = K·D_legacy − F_legacy` porte le même flip).
+- **Gotcha réutilisable (1.d–1.f)** : `m.Ke()` est indexée 6 DDL/nœud dans
+  l'ordre `DX, DY, DZ, RX, RY, RZ`, nœuds en ordre d'`ID` (= ordre
+  d'insertion). La rotation dans le plan est **RZ = indice local 5**, pas 2
+  (2 = `DZ`, hors-plan, toujours nul). Extraire un vecteur « 3 DDL/nœud »
+  façon legacy = prendre les indices locaux **(0, 1, 5)**.
+- Le contrôle « ΣF appliqué + Σréactions » n'est **pas** un bon test
+  d'équilibre quand des charges réparties perpendiculaires agissent sur des
+  barres inclinées (`Σ FER` ≠ résultante appliquée) — se fier à l'égalité
+  des réactions avec le legacy.
 
 #### Jeux de validation (étape 2) — entrées `charge_et_sections`
 
