@@ -956,16 +956,31 @@ secours (pas de retrait à l'étape 1.g).
 >
 > Trace vérifiée (cas-03, B2 traverse) : `Sij` lu pour **tous** les cas =
 > `[40,17 ; 401,70 ; 21530,6]` (CP) ; `Sij` correct du vent = `[0 ; 310,5 ;
-> 16641,7]`. `SolveurPyNite` utilise donc `fer_CP` pour tous les cas (parité).
-> Sans cette reproduction, cas-03 donnait `taux_trav` 50 % au lieu de 60 %
-> (sections retenues inchangées sur ~50 cas testés, mais non garanti — le test
-> `abs(tx) > 1` du rejet ELU s'appuie sur ces `tx_*` pollués). Contribue
-> probablement à l'écart legacy/CTICM.
+> 16641,7]`. `SolveurPyNite` utilise `fer_CP` pour tous les cas en parité
+> stricte, ou le `fer` propre à chaque cas en mode `pynite_corrige`.
+>
+> **Ampleur mesurée** (`compare_3modes_ctcim.py`, `taux_max` brut avant
+> `round(.,1)`) :
+>
+> | cas | legacy / pynite (bug) | pynite_corrige | Δ | section retenue |
+> |---|---|---|---|---|
+> | cas-01-compact | 37,98 % | 37,84 % | −0,14 pt | inchangée |
+> | cas-02-bas-large | 99,33 % | 98,84 % | −0,49 pt | inchangée (IPE 600/600) |
+> | cas-03-haut-fin | 56,07 % | 54,92 % | −1,15 pt | inchangée (le `taux_trav` **affiché** passe 60→50 car Δ franchit la frontière d'arrondi 0,55) |
+>
+> → Le bug `Sij` déplace `taux_max` de **< 1,2 point** sur ces 3 cas et **ne
+> change aucune section retenue**. Il **n'explique pas** une part
+> significative de l'écart CTICM (notamment sur cas-02) — chercher ailleurs
+> (jarret `1,66·h` constant, zones vent F/G/J, hors-périmètre flambement/
+> déversement). Décision « corriger le legacy en prod ? » : à trancher avec
+> les chiffres CTICM.
 
 Variable d'env **`MOTEUR_CALCUL`** : absente/`legacy` → moteur historique ;
-`pynite` → `business/solveur_pynite.py`. Non définie sur Railway pour
-l'instant (voir section « Déploiement »). En local :
-`MOTEUR_CALCUL=pynite python ...` ou `export MOTEUR_CALCUL=pynite`.
+`pynite` → `business/solveur_pynite.py` (parité stricte) ;
+`pynite_corrige` → PyNite avec `fer` propre à chaque cas (bug `Sij` corrigé,
+**mode de comparaison étape 2 uniquement, pas pour la prod**). Non définie
+sur Railway (voir section « Déploiement »). En local :
+`MOTEUR_CALCUL=pynite_corrige python ...`.
 
 #### Audit réalisé (session 1) — synthèse
 

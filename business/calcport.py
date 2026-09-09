@@ -38,10 +38,12 @@ IPE = Tuple_tous_ipe()
 AUDIT_MODE = os.environ.get("AUDIT_MODE") == "1"
 
 # Backend de résolution structurelle utilisé par optimise_IPE (voir CLAUDE.md,
-# "Roadmap moteur de calcul", étape 1). "legacy" = solveur maison historique ;
-# "pynite" = bascule PyNite (business/solveur_pynite.py). Défaut "legacy" tant
-# que la validation croisée CTICM (étape 2) n'a pas statué ; positionner
-# MOTEUR_CALCUL=pynite dans l'environnement pour tester l'autre backend.
+# "Roadmap moteur de calcul", étape 1) :
+#   "legacy"          = solveur maison historique (bug Sij présent, = prod) ;
+#   "pynite"          = bascule PyNite, parité stricte (bug Sij reproduit) ;
+#   "pynite_corrige"  = PyNite, fer propre à chaque cas (bug Sij corrigé) —
+#                       mode de COMPARAISON pour l'étape 2, PAS pour la prod.
+# Défaut "legacy" tant que la validation croisée CTICM (étape 2) n'a pas statué.
 MOTEUR_CALCUL = os.environ.get("MOTEUR_CALCUL", "legacy")
 
 
@@ -501,10 +503,16 @@ class _SolveurLegacy:
 
 
 def _make_solveur(geom, charges):
-    """Fabrique le backend de résolution selon MOTEUR_CALCUL."""
-    if MOTEUR_CALCUL == "pynite":
+    """Fabrique le backend de résolution selon MOTEUR_CALCUL.
+
+    - "legacy" (défaut) : solveur maison historique (bug Sij présent).
+    - "pynite" : bascule PyNite en parité stricte (bug Sij reproduit).
+    - "pynite_corrige" : PyNite avec `fer` propre à chaque cas (bug Sij
+      corrigé). Mode de COMPARAISON pour l'étape 2 (CTICM) — pas pour la prod.
+    """
+    if MOTEUR_CALCUL in ("pynite", "pynite_corrige"):
         from solveur_pynite import SolveurPyNite   # import tardif : évite le cycle
-        return SolveurPyNite(geom, charges)
+        return SolveurPyNite(geom, charges, sij_corrige=(MOTEUR_CALCUL == "pynite_corrige"))
     return _SolveurLegacy(geom, charges)
 
 
