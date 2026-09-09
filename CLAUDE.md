@@ -61,6 +61,9 @@
 - app/admin.py : back office admin (SQLAdmin) monté sur /admin, voir session 10
 - migrations/ + alembic.ini : migrations de schéma de base (Alembic, voir
   session 8)
+- validation/ : références de validation croisée du moteur (PDF Instanote26
+  vs notes CTICM par cas) + `validation/pynite_check/` : scripts de parité
+  legacy ↔ PyNite, un par sous-étape (voir « Roadmap moteur de calcul »)
 
 ## Code métier (business/)
 Contient le moteur de calcul Python — indépendant du framework web.
@@ -930,7 +933,7 @@ et **acceptation à l'inscription**.
   **sans renfort d'épaule** (géométrie cas-01-compact) : après correction du
   signe global, **les 21 DDL coïncident à la précision machine** (écart
   relatif 0,000 %, résidus ~1e-15). Parité Euler-Bernoulli confirmée sans
-  bricolage (pas besoin de forcer `G`). Script jetable hors dépôt (scratchpad).
+  bricolage (pas besoin de forcer `G`).
 - Conventions d'effort d'extrémité : voir « Règle de signe » ci-dessous.
 
 #### Étape 1.b — validée
@@ -1071,6 +1074,13 @@ Backend assembleur (option A) : `m.Ke()` de PyNite, puis partition /
   d'équilibre quand des charges réparties perpendiculaires agissent sur des
   barres inclinées (`Σ FER` ≠ résultante appliquée) — se fier à l'égalité
   des réactions avec le legacy.
+
+**Scripts de parité versionnés** : `validation/pynite_check/` — un script
+autonome et figé par sous-étape (`check_1a_sans_jarret.py`,
+`check_1b_renfort_epaule.py`, `check_1b_profilage.py`,
+`check_1c_cl_et_vent.py`), rejouables (sortie `0`/`1`). À relancer lors de
+toute montée de version de PyNite ou refactor du moteur. Voir le `README.md`
+du dossier.
 
 #### Jeux de validation (étape 2) — entrées `charge_et_sections`
 
