@@ -23,6 +23,7 @@ ce qui a été testé, quand.
 | `check_1f_optimise.py` | 1.f | Boucle `optimise_IPE` complète (monkeypatch d'un `resoudre_cas` PyNite) : sections retenues identiques sur 3 jeux + 12 cas aléatoires reproductibles. |
 | `check_1g_non_regression.py` | G | `charge_et_sections()` dict identique `MOTEUR_CALCUL=legacy` vs `pynite` (2 sous-processus), 32 cas dont `PasDeSolutionIPE` et zonage introuvable. Bug `Sij` corrigé des deux côtés (fix/legacy-sij). |
 | `compare_3modes_ctcim.py` | étape 2 CTICM | Rejoue cas-01/02/03 avec `legacy` et `pynite` : poteau/traverse, `taux_trav`, `taux_max` brut, flèche, masse. Pas de verdict. Le comparatif historique à 3 modes (avec « pynite parité stricte », retiré à l'étape 4) est figé dans `validation/COMPARAISON_CTICM.md`. |
+| `check_deps_runtime.py` | garde-fou deps | Après un `charge_et_sections()` en `MOTEUR_CALCUL=pynite` : `matplotlib` **pas** chargé (stub `Pynite.ShearWall`), `scipy` chargé. À rejouer à toute montée de version de PyNiteFEA (cf. CLAUDE.md, « Check-list montée de version PyNite »). |
 
 ## Rejouer
 
@@ -30,7 +31,8 @@ Depuis la racine du dépôt, venv actif (`PyNiteFEA` installé) :
 
 ```
 for s in 1a_sans_jarret 1b_renfort_epaule 1b_profilage 1c_cl_et_vent \
-         1d_familles_charges 1e_taux 1f_optimise 1g_non_regression; do
+         1d_familles_charges 1e_taux 1f_optimise 1g_non_regression \
+         deps_runtime; do
     python validation/pynite_check/check_$s.py
 done
 ```
@@ -47,11 +49,13 @@ sortent avec le code `0` (OK) ou `1` (écart au-delà de la tolérance).
 ## Quand les rejouer
 
 - **Montée de version de PyNite** (rappel : `PyNiteFEA` est piqué à
-  `==3.0.0` — toute montée est un projet à part) : rejouer tous les
-  scripts de parité, exiger le code de sortie `0`, comparer les temps de
-  `check_1b_profilage.py` à ceux consignés dans `CLAUDE.md`.
+  `==3.0.0` — toute montée est un projet à part) : suivre la
+  **« Check-list montée de version PyNite »** de `CLAUDE.md` (stub
+  `matplotlib`, `check_deps_runtime.py`, tous les `check_1*` en
+  `MOTEUR_CALCUL=legacy` **et** `=pynite`, signatures des méthodes
+  semi-internes, re-profilage).
 - Refactor du moteur (`business/calcport.py`, `business/solveur_pynite.py`) :
-  idem.
+  rejouer tous les scripts de parité, exiger le code de sortie `0`.
 
 Convention de signe legacy ↔ PyNite : voir `CLAUDE.md`, section
 « Règle de signe legacy ↔ PyNite ».

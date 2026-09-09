@@ -1157,6 +1157,37 @@ prévaloir de PyNiteFEA, lib EF établie, comme caution technique).
 > complet des tests de non-régression contre `validation/` (sorties
 > identiques au chiffre près) **avant** merge. Ne jamais bumper PyNite dans
 > un `pip install --upgrade` groupé.
+>
+> **Check-list « montée de version PyNite »** (dans l'ordre) :
+> 1. **Stub `matplotlib`** — `business/solveur_pynite.py` injecte un faux
+>    `sys.modules['Pynite.ShearWall']` **avant** `from Pynite import …`, parce
+>    que `Pynite/__init__.py` fait `from Pynite.ShearWall import ShearWall` et
+>    que `Pynite/ShearWall.py` (3.0.0) importe `matplotlib.pyplot` **au niveau
+>    module**. On n'utilise ni `ShearWall` ni aucune fonction de tracé PyNite.
+>    À la montée de version, vérifier :
+>    - `grep -rn "^import matplotlib\|^from matplotlib" .venv/Lib/site-packages/Pynite/`
+>      (imports matplotlib **non indentés** = au niveau module). Si un autre
+>      module que `ShearWall` en a un (ex. `Rendering`, `Visualization`,
+>      `__init__` lui-même), **ajouter le stub correspondant** ;
+>    - que `Pynite/__init__.py` importe toujours `ShearWall` par ce chemin
+>      exact (sinon adapter la clé du stub, ou le retirer s'il est devenu
+>      inutile) ;
+>    - que `from Pynite import FEModel3D` + `Analysis` fonctionnent **avec** le
+>      stub en place (le faux `ShearWall` ne doit rien casser).
+> 2. **Rejouer `validation/pynite_check/check_deps_runtime.py`** : assert que
+>    `matplotlib` n'est **pas** dans `sys.modules` après un
+>    `charge_et_sections()` en mode `pynite`, et que `scipy` l'est (attendu :
+>    `Pynite/FEModel3D.py` fait `import scipy` au niveau module + on utilise
+>    `scipy.linalg`). Si `matplotlib` réapparaît → le stub ne couvre plus tout
+>    (retour au point 1).
+> 3. **Rejouer tous les `check_1*`** (`MOTEUR_CALCUL=legacy` **et** `=pynite`)
+>    → exit `0`, dict `charge_et_sections()` identique entre les deux backends.
+> 4. Vérifier que les méthodes semi-internes utilisées existent toujours avec
+>    la même signature : `m.Ke(combo, log, check_stability, sparse)`,
+>    `m.P(combo)`, `m.FER(combo)`, `member.fer(combo)`, `member.ke()`,
+>    `member.T()`, `Analysis._prepare_model(m)`. (`solveur_pynite.py` les
+>    liste en tête.)
+> 5. Re-profiler (`check_1b_profilage.py`) et comparer aux chiffres d'ici.
 
 Alternatives écartées : **(B) PyNite natif** (`analyze()` + combos) — le
 plus propre mais ×13–22 ; **(C) solveur maison allégé** + PyNite seulement
