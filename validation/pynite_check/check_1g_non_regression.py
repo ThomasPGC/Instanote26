@@ -1,16 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Non-régression endpoint — parité `legacy` (corrigé) vs `pynite_corrige`.
+"""Non-régression endpoint — parité `MOTEUR_CALCUL=legacy` vs `=pynite`.
 
-`charge_et_sections()` doit renvoyer EXACTEMENT le même dict avec
-`MOTEUR_CALCUL=legacy` (bug Sij corrigé, branche fix/legacy-sij) et
-`MOTEUR_CALCUL=pynite_corrige` (backend PyNite, `fer` propre à chaque cas),
-sur un large balayage de cas (c'est ce que consomment `/htmx/calcul` et
-`/htmx/calcul-pdf` : le dict est rendu tel quel dans les templates → dict
-identique ⇒ HTML/PDF identiques).
-
-Historique : avant la correction du bug Sij, ce script comparait
-`legacy` (bugué) vs `pynite` (parité stricte). Depuis fix/legacy-sij, la
-cible est `legacy` corrigé vs `pynite_corrige`.
+`charge_et_sections()` doit renvoyer EXACTEMENT le même dict avec les deux
+backends (c'est ce que consomment `/htmx/calcul` et `/htmx/calcul-pdf` : le
+dict est rendu tel quel dans les templates → dict identique ⇒ HTML/PDF
+identiques). Bug `Sij` corrigé des deux côtés (branche fix/legacy-sij).
 
 Le flag est lu à l'import de `calcport` : on compare via deux sous-processus
 (un par valeur du flag) qui dumpent le résultat en JSON.
@@ -91,8 +85,8 @@ def _run(moteur):
     return json.loads(txt[start:])
 
 
-leg = _run("legacy")            # bug Sij corrigé (fix/legacy-sij)
-pyn = _run("pynite_corrige")    # backend PyNite, fer propre à chaque cas
+leg = _run("legacy")     # solveur maison (bug Sij corrigé)
+pyn = _run("pynite")     # backend PyNiteFEA
 
 keys = sorted(set(leg) | set(pyn))
 ndiff = 0

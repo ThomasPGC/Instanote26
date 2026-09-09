@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Comparaison 3 modes de calcul sur les 3 jeux de validation — préparation
-de la comparaison croisée CTICM (roadmap moteur, étape 2).
+"""Comparaison des backends sur les 3 jeux de validation — support de la
+comparaison croisée CTICM (roadmap moteur, étape 2).
 
-Modes (via MOTEUR_CALCUL, un sous-processus par mode) :
-  legacy          — solveur maison, bug Sij présent (= comportement de prod)
-  pynite          — bascule PyNite, parité stricte (bug Sij reproduit)
-  pynite_corrige  — PyNite, fer propre à chaque cas (bug Sij CORRIGÉ)
+Modes (via MOTEUR_CALCUL, un sous-processus par mode) : `legacy` et `pynite`.
+Depuis fix/legacy-sij (étape 4), le bug `Sij` est corrigé des deux côtés et
+le mode « pynite parité stricte » a été retiré → les deux colonnes doivent
+être identiques. Les chiffres historiques à 3 modes (legacy bugué / pynite
+parité / corrigé) sont figés dans `validation/COMPARAISON_CTICM.md` § 1.
 
-Sortie : par cas, pour chaque mode — poteau/traverse retenus, taux ELU
-(`taux_trav` arrondi + `taux_max` brut recalculé), flèche, ratios, masse.
-Objectif : isoler la contribution du bug Sij avant de décider si on corrige
-le legacy en prod.
+Sortie : par cas et par mode — poteau/traverse retenus, `taux_trav` arrondi,
+`taux_max` brut recalculé, flèche, masse.
 
 Rejeu :  python validation/pynite_check/compare_3modes_ctcim.py
 """
@@ -97,7 +96,7 @@ def run(moteur):
     return json.loads(p.stdout[p.stdout.index("{"):p.stdout.rstrip().rindex("}") + 1])
 
 
-MODES = ["legacy", "pynite", "pynite_corrige"]
+MODES = ["legacy", "pynite"]
 data = {m: run(m) for m in MODES}
 
 for name in CASES:

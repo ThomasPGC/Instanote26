@@ -4,11 +4,12 @@
 """Backend de résolution structurelle sur PyNiteFEA — option A « assembleur ».
 
 Utilisé par `calcport.optimise_IPE` quand la variable d'environnement
-`MOTEUR_CALCUL=pynite` (parité stricte avec le legacy) ou
-`MOTEUR_CALCUL=pynite_corrige` (mode de comparaison : `Sij`/`fer` propre à
-chaque cas, bug latent du legacy corrigé — pas pour la prod). Voir CLAUDE.md,
-section « Roadmap moteur de calcul », étape 1 (sous-étapes 1.a–1.f + découpage
-A→H) pour le contexte, les règles de signe et les parités démontrées.
+`MOTEUR_CALCUL=pynite`. Résultats identiques au solveur maison
+(`calcport._SolveurLegacy`), bug `Sij` compris = **corrigé des deux côtés**
+(chaque cas reconstruit ses efforts avec son propre `fer`). Voir CLAUDE.md,
+section « Roadmap moteur de calcul », étape 1 (sous-étapes 1.a–1.f, découpage
+A→H, branche `fix/legacy-sij`) pour le contexte, les règles de signe et les
+parités démontrées.
 
 Principe : PyNite fournit l'assemblage de la matrice de rigidité (`m.Ke`), la
 conversion charges → efforts d'encastrement (`m.P`, `m.FER`, `member.fer`) et
@@ -68,14 +69,12 @@ class SolveurPyNite:
     où `ens_resu` a exactement les clés produites par `calcport.calcport`
     (3 déplacements clés + 13 taux `tx_*`), en convention legacy."""
 
-    def __init__(self, geom, charges, sij_corrige=False):
-        # sij_corrige : mode de COMPARAISON uniquement (MOTEUR_CALCUL=pynite_corrige).
-        # False (défaut) -> parité stricte avec le legacy : `fer_CP` réutilisé pour
-        #   la reconstruction des efforts de TOUS les cas (bug latent reproduit).
-        # True  -> chaque cas utilise son PROPRE `fer` (physique correcte, ELU juste).
-        # Ne pas activer en prod tant que la comparaison CTICM (étape 2) n'a pas
-        # statué. Voir CLAUDE.md, encart « bug latent du legacy ».
-        self._sij_corrige = sij_corrige
+    def __init__(self, geom, charges):
+        # Chaque cas reconstruit ses efforts d'about avec SON PROPRE `fer`
+        # (efforts d'encastrement du cas), et pas avec celui du CP : le bug `Sij`
+        # du legacy (cf. CLAUDE.md) n'est PAS reproduit. Le mode « parité stricte »
+        # (fer_CP pour tous les cas), scaffold de la bascule, a été retiré à
+        # l'étape 4 de fix/legacy-sij une fois le legacy lui-même corrigé.
         self._charges = charges
         self._noms = [c[0] for c in charges]
         self._cp = self._noms[0]                      # le 1er cas est toujours "CP..."
@@ -155,17 +154,14 @@ class SolveurPyNite:
         self._rhs_cp_ext = _rhs(self._cp)
         self._rhs_sw = [_rhs(f"__SW{k}") for k in range(6)]
 
-        # FER local (12 composantes) par barre :
-        #  - `_fer_ext[nom]`  : efforts d'encastrement des charges EXTERNES du cas `nom`
-        #    (sans poids propre) — sert au mode `sij_corrige`.
-        #  - `_fer_cp_ext`    : idem pour le cas CP (raccourci).
-        #  - `_fer_sw`        : idem pour un poids propre unitaire par barre.
-        # En parité stricte, `resoudre` reconstruit les efforts de TOUS les cas
-        # avec le FER du seul cas CP (bug latent du legacy reproduit — voir
-        # CLAUDE.md). En mode `sij_corrige`, chaque cas utilise `_fer_ext[nom]`.
+        # FER local (12 composantes) par barre, par cas élémentaire :
+        #  - `_fer_ext[nom]`  : efforts d'encastrement des charges EXTERNES du cas
+        #    `nom` (sans poids propre). Chaque cas utilise LE SIEN pour reconstruire
+        #    ses efforts d'about (le bug `Sij` du legacy n'est pas reproduit).
+        #  - `_fer_sw`        : idem pour un poids propre unitaire par barre
+        #    (le cas CP y ajoute Σ A_k·dens·_fer_sw[k]).
         self._fer_ext = {nom: [np.asarray(m.members[f"M{k}"].fer(nom)).reshape(-1) for k in range(6)]
                          for nom in self._noms}
-        self._fer_cp_ext = self._fer_ext[self._cp]
         self._fer_sw = [np.asarray(m.members[f"M{k}"].fer(f"__SW{k}")).reshape(-1) for k in range(6)]
         self._T = [np.asarray(m.members[f"M{k}"].T()) for k in range(6)]
 
@@ -200,7 +196,8 @@ class SolveurPyNite:
             rhs_cp = rhs_cp + (aire[k] * DENS_LIN) * self._rhs_sw[k]
 
         # FER local du cas CP (externe + poids propre).
-        fer_cp = [self._fer_cp_ext[k] + (aire[k] * DENS_LIN) * self._fer_sw[k] for k in range(6)]
+        fer_cp = [self._fer_ext[self._cp][k] + (aire[k] * DENS_LIN) * self._fer_sw[k]
+                  for k in range(6)]
 
         resultats = []
         for nom in self._noms:
@@ -209,15 +206,8 @@ class SolveurPyNite:
             df = np.zeros(self._nN * 6)
             df[self._free] = d1
 
-            # FER utilisé pour reconstruire les efforts d'about de CE cas :
-            #  - parité stricte   -> fer_cp pour tous les cas (bug legacy) ;
-            #  - sij_corrige      -> fer propre au cas (CP garde son poids propre).
-            if nom == self._cp:
-                fer = fer_cp
-            elif self._sij_corrige:
-                fer = self._fer_ext[nom]
-            else:
-                fer = fer_cp
+            # FER propre au cas courant (le CP porte en plus son poids propre).
+            fer = fer_cp if nom == self._cp else self._fer_ext[nom]
 
             # efforts d'about par barre, convention legacy [Ni,Vi,Mi,Nj,Vj,Mj]
             #   floc = ke · (T · d_barre) + fer

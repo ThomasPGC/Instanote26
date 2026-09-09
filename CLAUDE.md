@@ -36,9 +36,10 @@
   sur `master`, confirmées fonctionnelles après déploiement). `AUDIT_MODE`
   reste absente (Railway l'a seulement détectée comme variable suggérée,
   présente dans le code) — instrumentation d'audit désactivée en prod par
-  défaut, comme en local. **`MOTEUR_CALCUL` : à laisser absente** (= backend
-  de calcul historique `legacy`) tant que la validation croisée CTICM
-  (roadmap moteur, étape 2) n'a pas statué sur le backend `pynite`.
+  défaut, comme en local. **`MOTEUR_CALCUL` : à définir = `pynite` sur
+  Railway** (Settings → Variables) pour activer le backend PyNiteFEA en prod
+  (`business/solveur_pynite.py`). Absente ⇒ backend maison `legacy` (résultats
+  identiques ; fallback sûr). Voir « Roadmap moteur de calcul », étape 1.
 - Base de données : **SQLite désormais persistante en prod** via un Volume
   Railway monté sur `/data`, combiné à `SQLITE_DB_PATH=/data/instanote26.db`
   (voir `app/database.py` — fallback `./instanote26.db` seulement si la
@@ -912,7 +913,7 @@ avant la suivante. Scripts de parité : `validation/pynite_check/`.
 | **1.d** | Porter les **3 familles de charges** (CP + poids propre uniquement en CP ; neige projetée ; vent perpendiculaire) **et** les charges ponctuelles `cas[2]`, avec la même convention de signe ; efforts de barre identiques cas par cas. | ✅ **fait** — efforts d'about des 6 barres identiques (0,000 %) sur **les 22 cas élémentaires** des 3 jeux, familles CP/NEI/VEN et charges nodales incluses. `check_1d_familles_charges.py`. |
 | **1.e** | Extraire Mi/Mj, Vi/Vj, déplacements → recalculer les `tx_*` avec la **même formule** `M/(Wpl·fy)`, γM0=1 ; taux identiques cas par cas. | ✅ **fait** — les 13 `tx_*` identiques **au signe près** (0,000 %) sur les 22 cas élémentaires ; moments critiques du renfort d'épaule vérifiés en détail + gouvernant post-`COMBI_EFF`. `check_1e_taux.py`. |
 | **1.f** | Rebrancher `resoudre_cas` (PyNite) dans `optimise_IPE` ; exécuter les **3 jeux de validation** + cas aléatoires ; **sections retenues identiques**. | ✅ **fait** — 3 jeux + 12 cas aléatoires reproductibles (seed 20240601) : **sections retenues identiques** partout (dont un `PasDeSolutionIPE` concordant), aucun écart sur `fleche`/`ratio_*`/`taux_trav`/`masse`. `check_1f_optimise.py`. |
-| **1.g** | Nettoyage : retirer le code legacy **seulement après accord explicite**, ou le garder sous `MOTEUR_CALCUL=legacy`. | ⬜ **repoussé** — décision : on **garde le legacy en secours** pour l'instant. Il deviendra probablement obsolète de fait à l'**étape 3** (jarret discrétisé : le legacy ne pourra jamais représenter cette géométrie) — réévaluer à ce moment-là (référence figée vs retrait). |
+| **1.g** | Nettoyage : retirer le code legacy **seulement après accord explicite**, ou le garder sous `MOTEUR_CALCUL=legacy`. | 🔸 **partiel** — `_SolveurLegacy` **gardé** en secours (`MOTEUR_CALCUL=legacy`, résultats identiques à `pynite`). Retiré : le mode « pynite parité stricte » (scaffold, cf. branche `fix/legacy-sij` étape 4). Retrait complet du legacy : réévaluer à l'**étape 3** (jarret discrétisé — le legacy ne pourra pas représenter cette géométrie). |
 
 #### Bascule dans le code — découpage A→H (état)
 
@@ -975,29 +976,33 @@ secours (pas de retrait à l'étape 1.g).
 > constant, zones vent F/G/J, hors-périmètre flambement/déversement).
 >
 > **Correction — branche `fix/legacy-sij`** (départ : commit `020c1cb` sur
-> `refactor/pynite`). Plan en 4 étapes (chacune commitée/validée) :
-> 1. Référence « avant » = `020c1cb`.
-> 2. `_SolveurLegacy.resoudre` : `crea_matrice_force` rappelé **dans la
+> `refactor/pynite`). Plan en 4 étapes, **toutes faites** :
+> 1. ✅ Référence « avant » = `020c1cb`.
+> 2. ✅ `_SolveurLegacy.resoudre` : `crea_matrice_force` rappelé **dans la
 >    boucle pour chaque cas** juste avant `calcport` (`self.F` supprimé).
->    Impact perf `charge_et_sections()` (dev, médianes) :
->    cas-01 31,6→35,5 ms (+12 %) · cas-02 15,6→18,1 ms (+16 %) ·
->    cas-03 104,0→126,2 ms (+21 %) — le surcoût suit le nombre d'itérations
->    IPE (74 pour cas-03). Sorties : identiques à `MOTEUR_CALCUL=pynite_corrige`
->    (23 cas testés, dict complet byte-identique).
-> 3. Validation locale (3 jeux) + **comparaison CTICM** via
->    `validation/synthese*.pdf`, tableau 5 colonnes
->    (legacy_bug / pynite_parité / **corrigé** / CTICM / écart) pour les 3 cas.
->    **Pas de déploiement Railway** avant validation explicite du user.
-> 4. Nettoyage (après feu vert) : retrait du mode parité stricte,
->    `legacy_corrigé` par défaut, doc, push, retest local + prod
->    (`MOTEUR_CALCUL=pynite` activé).
+>    Perf `charge_et_sections()` (dev, médianes) : cas-01 31,6→35,5 ms
+>    (+12 %) · cas-02 15,6→18,1 ms (+16 %) · cas-03 104,0→126,2 ms (+21 %)
+>    — surcoût ∝ nombre d'itérations IPE.
+> 3. ✅ Validation locale (3 jeux) + `check_1g` adapté (parité `legacy` vs
+>    `pynite`) + **comparaison CTICM** → `validation/COMPARAISON_CTICM.md` :
+>    l'écart CTICM croît avec le taux ELU (−1,3 / +4,2 / +10,1 pt sur
+>    cas-01/03/02), élément gouvernant identique Instanote ↔ CTICM. Le bug
+>    `Sij` (0,1–1,2 pt) **n'explique pas** cet écart. Sections CTICM (user) :
+>    cas-01 et cas-03 **identiques** à Instanote ; cas-02 poteaux IPE 600
+>    identiques mais **arbalétriers CTICM = IPE 500** (2 crans sous Instanote)
+>    → l'influence du jarret devient prépondérante → à traiter à l'**étape 3**
+>    (jarret discrétisé).
+> 4. ✅ Retrait du mode « pynite parité stricte » (scaffold obsolète). Les
+>    deux backends (`legacy`, `pynite`) donnent des résultats identiques, bug
+>    `Sij` corrigé des deux côtés. Défaut code = `legacy` ; Railway =
+>    `MOTEUR_CALCUL=pynite`. `pynite_corrige` conservé comme **alias** de
+>    `pynite`. **Non poussé / non déployé** — attente de la validation locale
+>    manuelle du user, puis push + déploiement.
 
-Variable d'env **`MOTEUR_CALCUL`** : absente/`legacy` → moteur historique ;
-`pynite` → `business/solveur_pynite.py` (parité stricte) ;
-`pynite_corrige` → PyNite avec `fer` propre à chaque cas (bug `Sij` corrigé,
-**mode de comparaison étape 2 uniquement, pas pour la prod**). Non définie
-sur Railway (voir section « Déploiement »). En local :
-`MOTEUR_CALCUL=pynite_corrige python ...`.
+Variable d'env **`MOTEUR_CALCUL`** : absente/`legacy` → solveur maison
+(méthode des déplacements) ; `pynite` (alias : `pynite_corrige`) →
+`business/solveur_pynite.py`. Résultats **identiques**. Sur Railway :
+`MOTEUR_CALCUL=pynite`. En local : `MOTEUR_CALCUL=pynite python ...`.
 
 #### Audit réalisé (session 1) — synthèse
 

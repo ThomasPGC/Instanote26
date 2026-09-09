@@ -21,8 +21,8 @@ ce qui a été testé, quand.
 | `check_1d_familles_charges.py` | 1.d | Efforts d'about des 6 barres identiques legacy vs PyNite sur les 22 cas élémentaires des 3 jeux — familles CP / NEI / VEN + charges nodales. |
 | `check_1e_taux.py` | 1.e | Les 13 `tx_*` recalculés depuis les efforts PyNite (formule legacy exacte), comparés **au signe près** cas par cas ; détail des moments critiques du renfort d'épaule + gouvernant post-`COMBI_EFF`. |
 | `check_1f_optimise.py` | 1.f | Boucle `optimise_IPE` complète (monkeypatch d'un `resoudre_cas` PyNite) : sections retenues identiques sur 3 jeux + 12 cas aléatoires reproductibles. |
-| `check_1g_non_regression.py` | G | `charge_et_sections()` dict identique `MOTEUR_CALCUL=legacy` vs `pynite_corrige` (2 sous-processus), 32 cas dont `PasDeSolutionIPE` et zonage introuvable. **Depuis fix/legacy-sij : cible = legacy corrigé vs pynite_corrige** (avant : legacy bugué vs pynite parité stricte). |
-| `compare_3modes_ctcim.py` | étape 2 CTICM | Rejoue cas-01/02/03 dans les 3 modes (`legacy`, `pynite` parité stricte, `pynite_corrige`) : poteau/traverse, `taux_trav`, `taux_max` brut, flèche, masse. Sert à isoler la contribution du bug Sij avant la comparaison CTICM. Pas de verdict. |
+| `check_1g_non_regression.py` | G | `charge_et_sections()` dict identique `MOTEUR_CALCUL=legacy` vs `pynite` (2 sous-processus), 32 cas dont `PasDeSolutionIPE` et zonage introuvable. Bug `Sij` corrigé des deux côtés (fix/legacy-sij). |
+| `compare_3modes_ctcim.py` | étape 2 CTICM | Rejoue cas-01/02/03 avec `legacy` et `pynite` : poteau/traverse, `taux_trav`, `taux_max` brut, flèche, masse. Pas de verdict. Le comparatif historique à 3 modes (avec « pynite parité stricte », retiré à l'étape 4) est figé dans `validation/COMPARAISON_CTICM.md`. |
 
 ## Rejouer
 

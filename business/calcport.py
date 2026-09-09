@@ -39,11 +39,11 @@ AUDIT_MODE = os.environ.get("AUDIT_MODE") == "1"
 
 # Backend de résolution structurelle utilisé par optimise_IPE (voir CLAUDE.md,
 # "Roadmap moteur de calcul", étape 1) :
-#   "legacy"          = solveur maison historique (bug Sij présent, = prod) ;
-#   "pynite"          = bascule PyNite, parité stricte (bug Sij reproduit) ;
-#   "pynite_corrige"  = PyNite, fer propre à chaque cas (bug Sij corrigé) —
-#                       mode de COMPARAISON pour l'étape 2, PAS pour la prod.
-# Défaut "legacy" tant que la validation croisée CTICM (étape 2) n'a pas statué.
+#   "legacy" (défaut) = solveur maison (méthode des déplacements) ;
+#   "pynite"          = bascule PyNiteFEA (business/solveur_pynite.py).
+# Les deux backends donnent des résultats identiques (bug Sij corrigé des deux
+# côtés depuis la branche fix/legacy-sij). Sur Railway : MOTEUR_CALCUL=pynite.
+# "pynite_corrige" est accepté comme alias historique de "pynite".
 MOTEUR_CALCUL = os.environ.get("MOTEUR_CALCUL", "legacy")
 
 
@@ -513,14 +513,14 @@ class _SolveurLegacy:
 def _make_solveur(geom, charges):
     """Fabrique le backend de résolution selon MOTEUR_CALCUL.
 
-    - "legacy" (défaut) : solveur maison historique (bug Sij présent).
-    - "pynite" : bascule PyNite en parité stricte (bug Sij reproduit).
-    - "pynite_corrige" : PyNite avec `fer` propre à chaque cas (bug Sij
-      corrigé). Mode de COMPARAISON pour l'étape 2 (CTICM) — pas pour la prod.
+    - "legacy" (défaut) : solveur maison (méthode des déplacements), bug Sij
+      corrigé (cf. _SolveurLegacy.resoudre).
+    - "pynite" (ou l'alias historique "pynite_corrige") : bascule PyNiteFEA.
+    Les deux donnent des résultats identiques.
     """
     if MOTEUR_CALCUL in ("pynite", "pynite_corrige"):
         from solveur_pynite import SolveurPyNite   # import tardif : évite le cycle
-        return SolveurPyNite(geom, charges, sij_corrige=(MOTEUR_CALCUL == "pynite_corrige"))
+        return SolveurPyNite(geom, charges)
     return _SolveurLegacy(geom, charges)
 
 
