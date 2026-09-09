@@ -475,8 +475,9 @@ def change_sections(barres, poteau, arba):
 
 
 class _SolveurLegacy:
-    """Backend de résolution historique de optimise_IPE, extrait tel quel du
-    corps de la boucle (aucun changement numérique).
+    """Backend de résolution historique de optimise_IPE, extrait du corps de la
+    boucle. Une seule différence numérique avec le legacy d'origine : correction
+    du bug `Sij` (cf. plus bas).
 
     resoudre(poteau, arba) renvoie `resultats_non_pond` :
         [(nom_cas, ens_resu_dict), ...] pour chaque cas élémentaire de `charges`,
@@ -486,20 +487,27 @@ class _SolveurLegacy:
 
     def __init__(self, geom, charges):
         self.charges = charges
-        # Sections de départ arbitraires : elles sont écrasées par change_sections
-        # au premier appel à resoudre() — comme le faisait déjà la 1re itération
-        # de la boucle. Les vecteurs de force des cas non-CP ne dépendent pas de
-        # la section (seulement de la géométrie des barres) ; celui du cas CP est
-        # recalculé à chaque resoudre() pour le poids propre.
+        # Sections de départ arbitraires : écrasées par change_sections au premier
+        # resoudre() — comme le faisait déjà la 1re itération de la boucle.
         self.A, self.B = def_noeud_barres(geom, "IPE 80", "IPE 80")
-        self.F = [crea_matrice_force(len(self.A), self.B, cas) for cas in charges]
 
     def resoudre(self, poteau, arba):
         change_sections(self.B, poteau, arba)
         K = crea_matrice_rigidite(self.A, self.B)
-        self.F[0] = crea_matrice_force(len(self.A), self.B, self.charges[0])
-        return [(cas[0], calcport(self.A, self.B, K, self.F[i], cas))
-                for i, cas in enumerate(self.charges)]
+        # CORRECTION DU BUG Sij (branche fix/legacy-sij) : `crea_matrice_force`
+        # est rappelé pour CHAQUE cas juste avant `calcport`, et pas seulement
+        # pour `charges[0]` (CP). `crea_matrice_force` a un effet de bord — elle
+        # (ré)écrit `barre.Sij` (efforts d'encastrement) sur toutes les barres —
+        # et `calculer_et_verifier_resultats` (appelée par `calcport`) lit ce
+        # `barre.Sij` pour reconstruire les efforts internes. En ne le rappelant
+        # que pour le CP, le legacy d'origine reconstruisait les efforts de NEI
+        # et VENT avec le `Sij` du CP (mélange incohérent → ELU faussé). Voir
+        # CLAUDE.md, encart « bug latent du legacy — Sij ».
+        resultats = []
+        for cas in self.charges:
+            F = crea_matrice_force(len(self.A), self.B, cas)
+            resultats.append((cas[0], calcport(self.A, self.B, K, F, cas)))
+        return resultats
 
 
 def _make_solveur(geom, charges):

@@ -933,47 +933,64 @@ secours (pas de retrait à l'étape 1.g).
 | **G** | Non-régression endpoint. | ✅ — `check_1g_non_regression.py` : 32 cas (30 aléa. + `PasDeSolutionIPE` + zonage KO), dict identique. `POST /htmx/calcul` → HTML même SHA256 ; `/htmx/calcul-pdf` → PDF valide des 2 côtés. |
 | **H** | Doc `CLAUDE.md`. | ✅ (ce bloc). |
 
-> **⚠️ Bug latent du legacy, reproduit volontairement** (à signaler dans la
-> comparaison CTICM de l'étape 2, **ne pas « corriger » dans la bascule**).
+> **⚠️ Bug latent du legacy — `Sij` figé sur le cas CP.** En cours de
+> correction sur la branche `fix/legacy-sij` (voir « Correction » ci-dessous).
 >
-> Bien distinguer deux choses :
-> - **Solve** : `calcport` résout `K·D = self.F[i]`, où `self.F[i]` (forces
->   nodales équivalentes du cas *i*) est calculé une fois dans `__init__` avec
->   le `Sij_i` du cas *i*. Le `Sij` d'un cas de charge externe ne dépend pas
->   de la section → ce cache entre itérations IPE est **légitime**, et les
->   **déplacements sont corrects par cas** (donc ELS : flèche/dérive justes).
-> - **Post-traitement** : `calculer_et_verifier_resultats`
->   ([calcport.py:321](business/calcport.py#L321), [:332](business/calcport.py#L332))
->   reconstruit `efforts_noeuds = −barre.Sij + k_barre·d_rot`. Or `barre.Sij`
->   est un **attribut mutable**, et dans `optimise_IPE` / `_SolveurLegacy.resoudre`
->   le **seul** `crea_matrice_force` appelé dans la boucle est celui du CP
->   ([calcport.py:498](business/calcport.py#L498)). Résultat : pour les 8 cas
->   élémentaires d'**une même résolution**, `calculer_et_verifier_resultats`
->   lit toujours `Sij_CP`. Les efforts internes (donc les 13 `tx_*`, donc
->   l'ELU) de NEI et VENT combinent `Sij_CP` + déplacements du cas courant →
->   **physiquement incohérents**. Cas le plus net : `NEI_ACCI` zone A1
->   (`ch_bar_acci = 0` → `Sij` correct = 0) reçoit quand même `Sij_CP ≠ 0`.
+> **Mécanisme.** `crea_matrice_force` a un effet de bord : elle (ré)écrit
+> `barre.Sij` (efforts d'encastrement) sur toutes les barres. `calculer_et_
+> verifier_resultats` ([calcport.py:321](business/calcport.py#L321),
+> [:332](business/calcport.py#L332)) reconstruit ensuite
+> `efforts_noeuds = −barre.Sij + k_barre·d_rot`. Or dans le `optimise_IPE`
+> d'origine / `_SolveurLegacy.resoudre`, le **seul** `crea_matrice_force`
+> rappelé dans la boucle des tailles IPE était celui du **CP**. Résultat :
+> pour les 8 cas élémentaires d'**une même résolution**, `calculer_et_verifier_
+> resultats` lit toujours `Sij_CP`. Les efforts internes (donc les 13 `tx_*`,
+> donc l'ELU) de NEI et VENT combinent `Sij_CP` + déplacements du cas courant
+> → **physiquement incohérents**. Le *solve* (déplacements) n'est **pas**
+> touché — l'ELS (flèche/dérive) reste juste. Cas le plus net : `NEI_ACCI`
+> zone A1 (`ch_bar_acci = 0` → `Sij` correct = 0) reçoit quand même
+> `Sij_CP ≠ 0`. Trace (cas-03, B2 traverse) : `Sij` lu pour **tous** les cas
+> = `[40,17 ; 401,70 ; 21530,6]` (CP) ; `Sij` correct du vent =
+> `[0 ; 310,5 ; 16641,7]`.
 >
-> Trace vérifiée (cas-03, B2 traverse) : `Sij` lu pour **tous** les cas =
-> `[40,17 ; 401,70 ; 21530,6]` (CP) ; `Sij` correct du vent = `[0 ; 310,5 ;
-> 16641,7]`. `SolveurPyNite` utilise `fer_CP` pour tous les cas en parité
-> stricte, ou le `fer` propre à chaque cas en mode `pynite_corrige`.
+> **Indépendant du bug de signe global** (`D_avec_app = −déplacement
+> physique`). Vérifié : le bug de signe vient de `crea_matrice_force` qui
+> assemble `F = +Σ barre.Fij` au lieu de `−Σ` (l'équivalent-nodal correct) —
+> `calcport(A,B,K,−F,…)` rend `D` physique. Corriger l'entrelacement de `Sij`
+> laisse `D_avec_app` toujours négatif. Deux défauts orthogonaux qui
+> coexistent ; **on ne corrige QUE le bug `Sij`** (le bug de signe est
+> globalement cohérent et neutralisé par les `abs()` de `optimise_IPE`).
 >
-> **Ampleur mesurée** (`compare_3modes_ctcim.py`, `taux_max` brut avant
-> `round(.,1)`) :
+> **Ampleur** (`compare_3modes_ctcim.py`, `taux_max` brut avant `round(.,1)`) :
 >
-> | cas | legacy / pynite (bug) | pynite_corrige | Δ | section retenue |
+> | cas | legacy d'origine (bug) | corrigé | Δ | section retenue |
 > |---|---|---|---|---|
 > | cas-01-compact | 37,98 % | 37,84 % | −0,14 pt | inchangée |
 > | cas-02-bas-large | 99,33 % | 98,84 % | −0,49 pt | inchangée (IPE 600/600) |
-> | cas-03-haut-fin | 56,07 % | 54,92 % | −1,15 pt | inchangée (le `taux_trav` **affiché** passe 60→50 car Δ franchit la frontière d'arrondi 0,55) |
+> | cas-03-haut-fin | 56,07 % | 54,92 % | −1,15 pt | inchangée (`taux_trav` **affiché** passe 60→50, Δ franchit l'arrondi 0,55) |
 >
-> → Le bug `Sij` déplace `taux_max` de **< 1,2 point** sur ces 3 cas et **ne
-> change aucune section retenue**. Il **n'explique pas** une part
-> significative de l'écart CTICM (notamment sur cas-02) — chercher ailleurs
-> (jarret `1,66·h` constant, zones vent F/G/J, hors-périmètre flambement/
-> déversement). Décision « corriger le legacy en prod ? » : à trancher avec
-> les chiffres CTICM.
+> → Le bug `Sij` déplace `taux_max` de **< 1,2 point** et **ne change aucune
+> section retenue** sur ces 3 cas + ~50 aléatoires. Il **n'explique pas** une
+> part significative de l'écart CTICM — chercher ailleurs (jarret `1,66·h`
+> constant, zones vent F/G/J, hors-périmètre flambement/déversement).
+>
+> **Correction — branche `fix/legacy-sij`** (départ : commit `020c1cb` sur
+> `refactor/pynite`). Plan en 4 étapes (chacune commitée/validée) :
+> 1. Référence « avant » = `020c1cb`.
+> 2. `_SolveurLegacy.resoudre` : `crea_matrice_force` rappelé **dans la
+>    boucle pour chaque cas** juste avant `calcport` (`self.F` supprimé).
+>    Impact perf `charge_et_sections()` (dev, médianes) :
+>    cas-01 31,6→35,5 ms (+12 %) · cas-02 15,6→18,1 ms (+16 %) ·
+>    cas-03 104,0→126,2 ms (+21 %) — le surcoût suit le nombre d'itérations
+>    IPE (74 pour cas-03). Sorties : identiques à `MOTEUR_CALCUL=pynite_corrige`
+>    (23 cas testés, dict complet byte-identique).
+> 3. Validation locale (3 jeux) + **comparaison CTICM** via
+>    `validation/synthese*.pdf`, tableau 5 colonnes
+>    (legacy_bug / pynite_parité / **corrigé** / CTICM / écart) pour les 3 cas.
+>    **Pas de déploiement Railway** avant validation explicite du user.
+> 4. Nettoyage (après feu vert) : retrait du mode parité stricte,
+>    `legacy_corrigé` par défaut, doc, push, retest local + prod
+>    (`MOTEUR_CALCUL=pynite` activé).
 
 Variable d'env **`MOTEUR_CALCUL`** : absente/`legacy` → moteur historique ;
 `pynite` → `business/solveur_pynite.py` (parité stricte) ;
