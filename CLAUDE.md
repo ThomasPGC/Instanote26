@@ -888,10 +888,25 @@ et **acceptation à l'inscription**.
   **le signaler au user avant** toute correction.
 
 ### Étape 1 — Bascule vers PyNite
-- Créer branche refactor/pynite (déjà anticipée dans la structure business/)
-- Remplacer le solveur interne par PyNite pour la résolution structurelle
-- Le calcul doit rester pilotable via la même interface
-  charge_et_sections(geom, locali, chpro) autant que possible
+- Branche `refactor/pynite`. Backend = **option A « PyNite assembleur »**
+  (PyNite fournit `Ke` + sections + charges→`FER` ; `resoudre_cas` pilote
+  partition + factorisation scipy + solve). Interface `charge_et_sections()`
+  inchangée. Détails et justification plus bas.
+
+#### Sous-étapes 1.a → 1.g — état d'avancement
+
+Reprendre ici après une pause. Chaque sous-étape = un diff relu et validé
+avant la suivante. Scripts de parité : `validation/pynite_check/`.
+
+| # | Objet | État |
+|---|---|---|
+| **1.a** | Modèle PyNite jetable, 1 portique, cas CP seul, section constante, **sans renfort d'épaule** ; comparer `D` nœud par nœud au legacy. | ✅ **fait** — 21 DDL identiques (précision machine) après règle de signe. `check_1a_sans_jarret.py`. |
+| **1.b** | Renfort d'épaule **à l'identique** (`jarret()` 1,66·h, 10 % portée) ; comparer 21 DDL + efforts d'about des 6 barres. + **profilage** (bloquant) et **règle de signe**. | ✅ **fait** — écart nul (CP + cas perpendiculaire). Profilage → décision backend = option A. `check_1b_renfort_epaule.py`, `check_1b_profilage.py`. |
+| **1.c** | Reproduire les **CL bi-articulées** N0/N6 + blocage des DDL hors-plan (PyNite est 3D) ; réactions et `D` identiques. | ✅ **fait** — 17 DDL libres = réduction legacy ; `D` **et** réactions à 0,000 % sur les 8 cas élémentaires de cas-03 (dont vent). `check_1c_cl_et_vent.py`. |
+| **1.d** | Porter les **3 familles de charges** (CP + poids propre uniquement en CP ; neige projetée ; vent perpendiculaire) **et** les charges ponctuelles `cas[2]`, avec la même convention de signe ; efforts de barre identiques cas par cas. | 🔸 **en cours** — largement dé-risqué par 1.c (les 3 familles y sont déjà portées et `D`/réactions matchent). Reste : formaliser le signe des charges **nodales** (moments d'acrotère `VEN_G_D`, nœuds d'accumulation neige) et le confirmer sur un cas qui les sollicite fortement. |
+| **1.e** | Extraire Mi/Mj, Vi/Vj, déplacements → recalculer les `tx_*` avec la **même formule** `M/(Wpl·fy)`, γM0=1 ; taux identiques cas par cas. | ⬜ à faire (règle de signe 2 déjà établie et vérifiée). |
+| **1.f** | Rebrancher `resoudre_cas` (PyNite) dans `optimise_IPE` ; exécuter les **3 jeux de validation** + cas aléatoires ; **sections retenues identiques**. | ⬜ à faire. Flag `MOTEUR = "legacy" | "pynite"` pour tourner les deux en parallèle (étape 2). |
+| **1.g** | Nettoyage : retirer le code legacy **seulement après accord explicite**, ou le garder sous `MOTEUR="legacy"` pour l'étape 2. | ⬜ à faire (dernier). |
 
 #### Audit réalisé (session 1) — synthèse
 
