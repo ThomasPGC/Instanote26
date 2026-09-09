@@ -59,7 +59,12 @@
 - business/calcport.py : moteur historique (méthode des déplacements maison)
   + `optimise_IPE` + `_SolveurLegacy` + aiguillage `MOTEUR_CALCUL`
 - business/solveur_pynite.py : backend PyNiteFEA (`SolveurPyNite`), actif si
-  `MOTEUR_CALCUL=pynite` — voir « Roadmap moteur de calcul », étape 1
+  `MOTEUR_CALCUL=pynite` — voir « Roadmap moteur de calcul », étape 1.
+  Dépendances runtime réellement chargées : `numpy`, `scipy`, `PrettyTable`.
+  `matplotlib` (dép. de PyNiteFEA, tracés inutilisés) est **neutralisé** par
+  un stub `sys.modules['Pynite.ShearWall']` en tête de fichier → jamais
+  importé à l'exécution (reste installé mais dormant). Rien à surveiller
+  côté matplotlib en prod.
 - templates/ : HTML Jinja2
 - static/ : CSS/JS
 - static/js/portique.js : dessin SVG temps réel + géolocalisation

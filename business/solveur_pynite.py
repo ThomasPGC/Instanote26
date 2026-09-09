@@ -29,7 +29,28 @@ extraction numpy.
 ⚠️ Dépend de méthodes semi-internes de PyNite (`Ke`, `P`, `FER`, `member.fer`,
 `member.ke`, `member.T`). `PyNiteFEA` est épinglé à `==3.0.0` ; toute montée de
 version est un projet à part (re-run des scripts `validation/pynite_check/`).
+
+Dépendances runtime effectivement chargées : `numpy`, `scipy`, `PrettyTable`.
+`matplotlib` (dépendance de PyNiteFEA, pour ses fonctions de tracé qu'on
+n'utilise pas) est **neutralisé** : voir le stub `Pynite.ShearWall` ci-dessous.
 """
+
+import sys as _sys
+import types as _types
+
+# --- neutralise l'import de matplotlib au chargement de PyNite -----------------
+# `Pynite/__init__.py` fait `from Pynite.ShearWall import ShearWall`, et
+# `Pynite/ShearWall.py` importe `matplotlib.pyplot` au niveau module. On
+# n'utilise NI ShearWall NI aucune fonction de tracé de PyNite (schémas SVG et
+# PDF générés par ailleurs). On injecte donc un faux module `Pynite.ShearWall`
+# avant tout import de PyNite : matplotlib n'est jamais chargé à l'exécution
+# (il reste installé comme dépendance de PyNiteFEA, mais dormant). scipy reste
+# nécessaire — `Pynite/FEModel3D.py` fait `import scipy` et on s'en sert pour la
+# factorisation (`scipy.linalg.lu_factor`).
+if "Pynite.ShearWall" not in _sys.modules:
+    _stub = _types.ModuleType("Pynite.ShearWall")
+    _stub.ShearWall = type("ShearWall", (), {})   # placeholder inutilisé
+    _sys.modules["Pynite.ShearWall"] = _stub
 
 import numpy as np
 import scipy.linalg as sla
