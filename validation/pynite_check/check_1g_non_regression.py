@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Non-régression endpoint — sous-étape G de la bascule.
+"""Non-régression endpoint — parité `legacy` (corrigé) vs `pynite_corrige`.
 
 `charge_et_sections()` doit renvoyer EXACTEMENT le même dict avec
-`MOTEUR_CALCUL=legacy` et `MOTEUR_CALCUL=pynite`, sur un large balayage de cas
-(c'est ce que consomment `/htmx/calcul` et `/htmx/calcul-pdf` : le dict est
-rendu tel quel dans les templates, donc dict identique => HTML/PDF identiques).
+`MOTEUR_CALCUL=legacy` (bug Sij corrigé, branche fix/legacy-sij) et
+`MOTEUR_CALCUL=pynite_corrige` (backend PyNite, `fer` propre à chaque cas),
+sur un large balayage de cas (c'est ce que consomment `/htmx/calcul` et
+`/htmx/calcul-pdf` : le dict est rendu tel quel dans les templates → dict
+identique ⇒ HTML/PDF identiques).
+
+Historique : avant la correction du bug Sij, ce script comparait
+`legacy` (bugué) vs `pynite` (parité stricte). Depuis fix/legacy-sij, la
+cible est `legacy` corrigé vs `pynite_corrige`.
 
 Le flag est lu à l'import de `calcport` : on compare via deux sous-processus
 (un par valeur du flag) qui dumpent le résultat en JSON.
@@ -85,8 +91,8 @@ def _run(moteur):
     return json.loads(txt[start:])
 
 
-leg = _run("legacy")
-pyn = _run("pynite")
+leg = _run("legacy")            # bug Sij corrigé (fix/legacy-sij)
+pyn = _run("pynite_corrige")    # backend PyNite, fer propre à chaque cas
 
 keys = sorted(set(leg) | set(pyn))
 ndiff = 0
