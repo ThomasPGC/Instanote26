@@ -6,7 +6,7 @@
 <div class="d-flex align-items-start justify-content-between mb-1">
   <div>
     <div class="fw-semibold fs-6">{{ city }}</div>
-    <div class="text-muted small">Dép. {{ dept }} — {{ altitude }} m NGF</div>
+    <div class="text-muted small">Dép. {{ dept }} — {{ altitude | fr_mesure("m NGF") }}</div>
     {% if old_city %}<div class="text-muted small fst-italic">Ancienne commune : {{ old_city }}</div>{% endif %}
   </div>
   <button type="button" class="btn btn-sm btn-outline-secondary ms-3"

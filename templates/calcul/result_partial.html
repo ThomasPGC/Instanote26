@@ -53,25 +53,25 @@
         <tbody>
           <tr>
             <td>Flèche faîtage</td>
-            <td class="text-end">{{ result.fleche }} mm</td>
+            <td class="text-end">{{ result.fleche | fr_mesure("mm", 1) }}</td>
             <td class="text-end">L / 200</td>
-            <td class="text-end fw-bold">L / {{ result.ratio_fleche }}</td>
+            <td class="text-end fw-bold">L / {{ result.ratio_fleche | fr_nombre }}</td>
           </tr>
           <tr>
             <td>Déplacement tête poteau (max)</td>
-            <td class="text-end">{{ result.depl_tete_pot }} mm</td>
+            <td class="text-end">{{ result.depl_tete_pot | fr_mesure("mm", 1) }}</td>
             <td class="text-end">H / 150</td>
-            <td class="text-end fw-bold">H / {{ result.ratio_depl }}</td>
+            <td class="text-end fw-bold">H / {{ result.ratio_depl | fr_nombre }}</td>
           </tr>
           <tr>
             <td>Déplacement tête poteau — gauche</td>
-            <td class="text-end">{{ result.deplacement_gauche }} mm</td>
+            <td class="text-end">{{ result.deplacement_gauche | fr_mesure("mm", 1) }}</td>
             <td class="text-end">—</td>
             <td class="text-end">—</td>
           </tr>
           <tr>
             <td>Déplacement tête poteau — droite</td>
-            <td class="text-end">{{ result.deplacement_droite }} mm</td>
+            <td class="text-end">{{ result.deplacement_droite | fr_mesure("mm", 1) }}</td>
             <td class="text-end">—</td>
             <td class="text-end">—</td>
           </tr>
@@ -85,7 +85,7 @@
       {% set taux = result.taux_trav | float %}
       <div class="d-flex justify-content-between small mb-1">
         <span>Taux de travail maximal</span>
-        <strong>{{ taux | round(1) }} %</strong>
+        <strong>{{ taux | fr_mesure("%", 1) }}</strong>
       </div>
       <div class="progress" style="height: 20px;">
         {% if taux <= 75 %}
@@ -101,7 +101,7 @@
              style="width: {{ bar_width }}%"
              aria-valuenow="{{ taux }}"
              aria-valuemin="0" aria-valuemax="100">
-          {{ taux | round(1) }} %
+          {{ taux | fr_mesure("%", 1) }}
         </div>
       </div>
     </div>
@@ -110,11 +110,11 @@
     {# surface portée par UN portique = portée × entraxe (pas la longueur totale du bâtiment) #}
     {% set surface = (geom.portee / 100) * (geom.entraxe / 100) %}
     <div class="alert alert-light border mb-0">
-      <strong>Masse estimée de l'ossature (portique seul) :</strong>
-      {{ result.masse | round(0) | int }} kg
+      <strong>Masse estimée de l'ossature (portique seul)&nbsp;:</strong>
+      {{ result.masse | fr_mesure("kg", 0) }}
       {% if surface > 0 %}
       <span class="text-muted small ms-2">
-        ≈ {{ (result.masse / surface) | round(1) }} kg/m²
+        ≈ {{ (result.masse / surface) | fr_mesure("kg/m²", 1) }}
       </span>
       {% endif %}
     </div>

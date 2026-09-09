@@ -84,6 +84,12 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
 - Évolution du schéma de base : passer par Alembic
   (`alembic revision --autogenerate -m "..."` puis `alembic upgrade head`),
   ne pas se reposer sur `Base.metadata.create_all` (voir session 8)
+- Typographie française de l'affichage (nombres, unités, ponctuation) :
+  voir `TYPOGRAPHIE.md`. Tout nombre montré à l'utilisateur (templates HTML +
+  PDF WeasyPrint) passe par les filtres Jinja2 `| fr_nombre` / `| fr_mesure`
+  (définis dans `app/templating.py`) — virgule décimale, espace insécable
+  milliers + unité. Ne jamais appliquer ces filtres aux valeurs soumises au
+  serveur, aux appels d'API (BAN/IGN/Sirene) ni aux propriétés CSS/ARIA.
 
 ## Features développées (sessions 1 à 3)
 
@@ -813,3 +819,53 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
   multi-travées) — créer branche refactor/pytnite, valider résultats numériques
   identiques avant merge sur master
 - voir si des tests sont déjà en place, en créer si nécessaire pour être sûrs des résultats de calcul
+
+## Roadmap moteur de calcul (session post-infrastructure)
+
+Contexte : l'infrastructure SaaS (auth, PDF, profil, migrations Alembic) est
+en place. Prochaine phase : fiabiliser et enrichir le cœur de calcul avant
+d'ouvrir Stripe. Objectif : rigueur et validation à chaque étape, ne pas
+enchaîner sans avoir validé l'étape précédente.
+
+### Étape 1 — Bascule vers PyNite
+- Créer branche refactor/pynite (déjà anticipée dans la structure business/)
+- Remplacer le solveur interne par PyNite pour la résolution structurelle
+- Le calcul doit rester pilotable via la même interface
+  charge_et_sections(geom, locali, chpro) autant que possible
+
+### Étape 2 — Validation croisée (JALON BLOQUANT)
+- Choisir 2 ou 3 modèles de portique représentatifs (dont un cas limite)
+- Calculer chaque modèle avec : l'ancien algo, PyNite, et un logiciel externe
+  de référence (CTICM)
+- Définir AVANT de comparer les seuils d'écart acceptables (%) sur : flèche,
+  moment fléchissant, effort normal, section retenue
+- Ne pas passer à l'étape 3 tant que cette validation n'est pas actée
+
+### Étape 3 — Jarrets en suite de petites barres
+- Remplacer l'approximation actuelle (section à 2/3, longueur à 10% arbitraire)
+  par une modélisation en plusieurs barres sur la longueur du jarret
+- Permet à terme d'optimiser finement section et longueur
+
+### Étape 4 — Audit des charges, en particulier celles de vent
+- Revue exhaustive des configurations de vent (zones, catégories de terrain,
+  coefficients de forme selon géométrie, faces au vent/sous le vent)
+- Cas de test dédiés par configuration
+
+### Étape 5 — Modèle d'appentis
+- Reprendre l'ancien modèle back-office si dispo (portique à un seul arbalétrier)
+  et le remettre au propre avec le nouveau moteur PyNite, sinon le créer
+
+### Étape 6 — Portique bipente asymétrique
+- Support de 2 poteaux distincts + 2 arbalétriers distincts
+- Revoir l'algorithme d'optimisation : l'espace de recherche passe de
+  2 variables discrètes (1 poteau, 1 arba) à un espace plus large
+  (2 poteaux, 2 arbas, + longueurs de jarret cf étape suivante)
+
+### Étape 7 — Optimisation de la longueur des jarrets
+- Rendre la longueur de jarret variable en interne (non exposée utilisateur)
+- Adapter l'optimisateur pour jouer sur ce paramètre en plus du choix IPE
+  (ex : rallonger de quelques cm peut faire redescendre d'une section)
+
+Règle de méthode : chaque étape = une session dédiée, validée et
+commitée avant de passer à la suivante. Pas de mélange d'étapes dans une
+même session.

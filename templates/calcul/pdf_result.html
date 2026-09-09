@@ -117,20 +117,20 @@
 
     <h2>Hypothèses</h2>
     <table class="kv-table">
-        <tr><td>Hauteur poteau</td><td>{{ "%.2f"|format(hpot) }} m</td></tr>
-        <tr><td>Portée</td><td>{{ "%.2f"|format(portee) }} m</td></tr>
-        <tr><td>Pente toiture</td><td>{{ "%.0f"|format(pente_pct) }} %</td></tr>
-        <tr><td>Entraxe portiques</td><td>{{ "%.2f"|format(entraxe) }} m</td></tr>
-        <tr><td>Longueur bâtiment</td><td>{{ "%.2f"|format(longueur) }} m</td></tr>
-        <tr><td>Hauteur acrotère</td><td>{{ "%.2f"|format(h_acro) }} m</td></tr>
-        <tr><td>Charge couverture</td><td>{{ couv }} daN/m²</td></tr>
-        <tr><td>Charges diverses</td><td>{{ divers }} daN/m²</td></tr>
+        <tr><td>Hauteur poteau</td><td>{{ hpot | fr_mesure("m", 2) }}</td></tr>
+        <tr><td>Portée</td><td>{{ portee | fr_mesure("m", 2) }}</td></tr>
+        <tr><td>Pente toiture</td><td>{{ pente_pct | fr_mesure("%", 0) }}</td></tr>
+        <tr><td>Entraxe portiques</td><td>{{ entraxe | fr_mesure("m", 2) }}</td></tr>
+        <tr><td>Longueur bâtiment</td><td>{{ longueur | fr_mesure("m", 2) }}</td></tr>
+        <tr><td>Hauteur acrotère</td><td>{{ h_acro | fr_mesure("m", 2) }}</td></tr>
+        <tr><td>Charge couverture</td><td>{{ couv | fr_mesure("daN/m²") }}</td></tr>
+        <tr><td>Charges diverses</td><td>{{ divers | fr_mesure("daN/m²") }}</td></tr>
         <tr>
             <td>Commune</td>
             <td>{{ nom_commune }}{% if ancien_nom_comm %} (anciennement {{ ancien_nom_comm }}){% endif %}</td>
         </tr>
         <tr><td>Département</td><td>{{ departement }}</td></tr>
-        <tr><td>Altitude</td><td>{{ altitude }} m NGF</td></tr>
+        <tr><td>Altitude</td><td>{{ altitude | fr_mesure("m NGF") }}</td></tr>
         <tr><td>Catégorie de terrain</td><td>{{ rugosite_label }}</td></tr>
     </table>
 
@@ -164,25 +164,25 @@
         <tbody>
             <tr>
                 <td>Flèche faîtage</td>
-                <td>{{ result.fleche }} mm</td>
+                <td>{{ result.fleche | fr_mesure("mm", 1) }}</td>
                 <td>L / 200</td>
-                <td>L / {{ result.ratio_fleche }}</td>
+                <td>L / {{ result.ratio_fleche | fr_nombre }}</td>
             </tr>
             <tr>
                 <td>Déplacement tête poteau (max)</td>
-                <td>{{ result.depl_tete_pot }} mm</td>
+                <td>{{ result.depl_tete_pot | fr_mesure("mm", 1) }}</td>
                 <td>H / 150</td>
-                <td>H / {{ result.ratio_depl }}</td>
+                <td>H / {{ result.ratio_depl | fr_nombre }}</td>
             </tr>
             <tr>
                 <td>Déplacement tête poteau — gauche</td>
-                <td>{{ result.deplacement_gauche }} mm</td>
+                <td>{{ result.deplacement_gauche | fr_mesure("mm", 1) }}</td>
                 <td>—</td>
                 <td>—</td>
             </tr>
             <tr>
                 <td>Déplacement tête poteau — droite</td>
-                <td>{{ result.deplacement_droite }} mm</td>
+                <td>{{ result.deplacement_droite | fr_mesure("mm", 1) }}</td>
                 <td>—</td>
                 <td>—</td>
             </tr>
@@ -192,7 +192,7 @@
     <h2>Contraintes</h2>
     {% set taux = result.taux_trav | float %}
     <div>
-        Taux de travail maximal : <strong>{{ taux | round(1) }} %</strong>
+        Taux de travail maximal&nbsp;: <strong>{{ taux | fr_mesure("%", 1) }}</strong>
         <div class="taux-bar-bg">
             <div class="taux-bar-fill {{ 'ok' if taux <= 75 else ('warn' if taux <= 90 else 'danger') }}"
                  style="width: {{ [taux, 100] | min }}%;"></div>
@@ -202,10 +202,10 @@
     {# surface portée par UN portique = portée × entraxe (pas la longueur totale du bâtiment) #}
     {% set surface = (geom.portee / 100) * (geom.entraxe / 100) %}
     <div class="masse-box">
-        <strong>Masse estimée de l'ossature (portique seul) :</strong>
-        {{ result.masse | round(0) | int }} kg
+        <strong>Masse estimée de l'ossature (portique seul)&nbsp;:</strong>
+        {{ result.masse | fr_mesure("kg", 0) }}
         {% if surface > 0 %}
-        <span style="color:#777;">≈ {{ (result.masse / surface) | round(1) }} kg/m²</span>
+        <span style="color:#777;">≈ {{ (result.masse / surface) | fr_mesure("kg/m²", 1) }}</span>
         {% endif %}
     </div>
 
