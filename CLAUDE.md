@@ -36,7 +36,9 @@
   sur `master`, confirmées fonctionnelles après déploiement). `AUDIT_MODE`
   reste absente (Railway l'a seulement détectée comme variable suggérée,
   présente dans le code) — instrumentation d'audit désactivée en prod par
-  défaut, comme en local.
+  défaut, comme en local. **`MOTEUR_CALCUL` : à laisser absente** (= backend
+  de calcul historique `legacy`) tant que la validation croisée CTICM
+  (roadmap moteur, étape 2) n'a pas statué sur le backend `pynite`.
 - Base de données : **SQLite désormais persistante en prod** via un Volume
   Railway monté sur `/data`, combiné à `SQLITE_DB_PATH=/data/instanote26.db`
   (voir `app/database.py` — fallback `./instanote26.db` seulement si la
@@ -53,6 +55,10 @@
 - app/main.py : point d'entrée FastAPI
 - app/routers/ : les endpoints
 - business/ : code métier Python
+- business/calcport.py : moteur historique (méthode des déplacements maison)
+  + `optimise_IPE` + `_SolveurLegacy` + aiguillage `MOTEUR_CALCUL`
+- business/solveur_pynite.py : backend PyNiteFEA (`SolveurPyNite`), actif si
+  `MOTEUR_CALCUL=pynite` — voir « Roadmap moteur de calcul », étape 1
 - templates/ : HTML Jinja2
 - static/ : CSS/JS
 - static/js/portique.js : dessin SVG temps réel + géolocalisation
@@ -906,7 +912,43 @@ avant la suivante. Scripts de parité : `validation/pynite_check/`.
 | **1.d** | Porter les **3 familles de charges** (CP + poids propre uniquement en CP ; neige projetée ; vent perpendiculaire) **et** les charges ponctuelles `cas[2]`, avec la même convention de signe ; efforts de barre identiques cas par cas. | ✅ **fait** — efforts d'about des 6 barres identiques (0,000 %) sur **les 22 cas élémentaires** des 3 jeux, familles CP/NEI/VEN et charges nodales incluses. `check_1d_familles_charges.py`. |
 | **1.e** | Extraire Mi/Mj, Vi/Vj, déplacements → recalculer les `tx_*` avec la **même formule** `M/(Wpl·fy)`, γM0=1 ; taux identiques cas par cas. | ✅ **fait** — les 13 `tx_*` identiques **au signe près** (0,000 %) sur les 22 cas élémentaires ; moments critiques du renfort d'épaule vérifiés en détail + gouvernant post-`COMBI_EFF`. `check_1e_taux.py`. |
 | **1.f** | Rebrancher `resoudre_cas` (PyNite) dans `optimise_IPE` ; exécuter les **3 jeux de validation** + cas aléatoires ; **sections retenues identiques**. | ✅ **fait** — 3 jeux + 12 cas aléatoires reproductibles (seed 20240601) : **sections retenues identiques** partout (dont un `PasDeSolutionIPE` concordant), aucun écart sur `fleche`/`ratio_*`/`taux_trav`/`masse`. `check_1f_optimise.py`. |
-| **1.g** | Nettoyage : retirer le code legacy **seulement après accord explicite**, ou le garder sous `MOTEUR="legacy"` pour l'étape 2. | ⬜ à faire (dernier). |
+| **1.g** | Nettoyage : retirer le code legacy **seulement après accord explicite**, ou le garder sous `MOTEUR_CALCUL=legacy`. | ⬜ **repoussé** — décision : on **garde le legacy en secours** pour l'instant. Il deviendra probablement obsolète de fait à l'**étape 3** (jarret discrétisé : le legacy ne pourra jamais représenter cette géométrie) — réévaluer à ce moment-là (référence figée vs retrait). |
+
+#### Bascule dans le code — découpage A→H (état)
+
+Décisions : solveur PyNite isolé dans `business/solveur_pynite.py` ; aiguillage
+par la **variable d'environnement `MOTEUR_CALCUL`** (`legacy` par défaut,
+`pynite` opt-in) — pas de constante module ; défaut prod `legacy` jusqu'à ce
+que la validation croisée CTICM (étape 2) ait statué ; legacy gardé en
+secours (pas de retrait à l'étape 1.g).
+
+| Ét. | Objet | État |
+|---|---|---|
+| **A** | Extraire le bloc de résolution de `optimise_IPE` → `_SolveurLegacy` + `_make_solveur(MOTEUR_CALCUL)`. | ✅ — `charge_et_sections()` byte-identique au pré-refactor (3 jeux + 12 aléatoires, dict complet). |
+| **B** | `business/solveur_pynite.py` + micro-tests (mutation `Section.A/.Iz` reflétée par `m.Ke()` ; `Analysis._prepare_model` suffit pour `node.ID`/`member.active`). | ✅ |
+| **C** | Poids propre par décomposition linéaire (6 cases unitaires `__SWk`) : `rhs_cp = rhs_ext + Σ A_k·dens·rhs_sw_unit_k`. | ✅ — écart nul vs RHS CP legacy. |
+| **D** | Efforts d'about `floc = ke·(T·d) + fer_CP` → `[Ni,Vi,Mi,Nj,Vj,Mj]_legacy = −floc[[0,1,5,6,7,11]]`. | ✅ — 0,000 % vs `efforts_noeuds` legacy (checkpoint D-ter). |
+| **E** | Câblage `MOTEUR_CALCUL` + `SolveurPyNite`. | ✅ — `charge_et_sections()` **byte-identique** legacy vs pynite (3 jeux + 12 aléatoires) ; 6 scripts `check_1*` OK sous `MOTEUR_CALCUL=pynite`. |
+| **F** | Profilage. | ✅ — `_prepare_model` au lieu d'`analyze_linear` en `__init__` → **×1,27 / ×1,61 / ×1,10** (cas-01 / 02 / 03), tous < 120 ms. |
+| **G** | Non-régression endpoint. | ✅ — `check_1g_non_regression.py` : 32 cas (30 aléa. + `PasDeSolutionIPE` + zonage KO), dict identique. `POST /htmx/calcul` → HTML même SHA256 ; `/htmx/calcul-pdf` → PDF valide des 2 côtés. |
+| **H** | Doc `CLAUDE.md`. | ✅ (ce bloc). |
+
+> **⚠️ Quirk legacy reproduit volontairement** (à signaler dans la comparaison
+> CTICM de l'étape 2, **ne pas « corriger »**) : `optimise_IPE` ne rappelle
+> `crea_matrice_force` que pour `charges[0]` (CP) avant la boucle des cas →
+> `barre.Sij` (efforts d'encastrement) reste figé sur CP, et
+> `calculer_et_verifier_resultats` reconstruit les efforts d'about de **tous**
+> les cas (NEI, vent…) avec le `Sij` du **seul cas CP**, combiné aux
+> déplacements du cas courant. `SolveurPyNite` utilise donc `fer_CP` pour tous
+> les cas. Sans cette reproduction, cas-03 donnait `taux_trav` 50 % au lieu de
+> 60 % (sections retenues inchangées, mais `taux_trav` = max post-`COMBI_EFF`
+> sensible). Ce mélange efforts-CP + déplacements-cas est un bug latent du
+> legacy qui contribue probablement à l'écart legacy/CTICM.
+
+Variable d'env **`MOTEUR_CALCUL`** : absente/`legacy` → moteur historique ;
+`pynite` → `business/solveur_pynite.py`. Non définie sur Railway pour
+l'instant (voir section « Déploiement »). En local :
+`MOTEUR_CALCUL=pynite python ...` ou `export MOTEUR_CALCUL=pynite`.
 
 #### Audit réalisé (session 1) — synthèse
 
@@ -1094,9 +1136,9 @@ Backend assembleur (option A) : `m.Ke()` de PyNite, puis partition /
 autonome et figé par sous-étape (`check_1a_sans_jarret.py`,
 `check_1b_renfort_epaule.py`, `check_1b_profilage.py`,
 `check_1c_cl_et_vent.py`, `check_1d_familles_charges.py`,
-`check_1e_taux.py`, `check_1f_optimise.py`), rejouables
-(sortie `0`/`1`). À relancer lors de toute montée de version de PyNite ou
-refactor du moteur. Voir le `README.md` du dossier.
+`check_1e_taux.py`, `check_1f_optimise.py`, `check_1g_non_regression.py`),
+rejouables (sortie `0`/`1`). À relancer lors de toute montée de version de
+PyNite ou refactor du moteur. Voir le `README.md` du dossier.
 
 #### Étape 1.d — validée (portage des familles de charges)
 
