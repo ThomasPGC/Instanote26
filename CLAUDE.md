@@ -762,6 +762,20 @@ business/calcport.py → charge_et_sections(geom, locali, chpro)
     envoyée sur la **nouvelle** adresse, pour éviter le vol de compte).
 
 ## Corrigés récemment
+- **Back office SQLAdmin sans aucun style en prod (fix `fix/admin-proxy-headers`)** :
+  `/admin` s'affichait en HTML brut (le reste du site OK). Cause : Railway
+  termine le TLS et transmet la requête en HTTP interne avec
+  `X-Forwarded-Proto: https` ; sans prise en compte de cet en-tête, Starlette
+  se croit en HTTP et `request.url_for('admin:statics', ...)` (utilisé par les
+  templates SQLAdmin) génère des URL absolues `http://` → CSS/JS bloqués par le
+  navigateur (contenu mixte sur page HTTPS). `base.html` du site, lui, charge
+  Bootstrap depuis un CDN en `https://` écrit en dur (pas de `url_for`) → jamais
+  affecté.
+  - **Fix** : `app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")`
+    dans `app/main.py`, ajouté **après** `CurrentUserMiddleware` donc middleware
+    le plus externe (corrige le scope avant tout le reste). `trusted_hosts="*"` :
+    le conteneur Railway n'est joignable que via le proxy. Vérifié en simulant
+    l'en-tête : `url_for` repasse en `https://`, ressources statiques 200.
 - **Crash prod « duplicate column name: nom » (fix `fix/alembic-ownership`)** :
   après avoir mis la commande de démarrage Railway
   `alembic upgrade head && uvicorn ...`, le service partait en crash-loop.
