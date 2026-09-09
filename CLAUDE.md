@@ -905,7 +905,7 @@ avant la suivante. Scripts de parité : `validation/pynite_check/`.
 | **1.c** | Reproduire les **CL bi-articulées** N0/N6 + blocage des DDL hors-plan (PyNite est 3D) ; réactions et `D` identiques. | ✅ **fait** — 17 DDL libres = réduction legacy ; `D` **et** réactions à 0,000 % sur les 8 cas élémentaires de cas-03 (dont vent). `check_1c_cl_et_vent.py`. |
 | **1.d** | Porter les **3 familles de charges** (CP + poids propre uniquement en CP ; neige projetée ; vent perpendiculaire) **et** les charges ponctuelles `cas[2]`, avec la même convention de signe ; efforts de barre identiques cas par cas. | ✅ **fait** — efforts d'about des 6 barres identiques (0,000 %) sur **les 22 cas élémentaires** des 3 jeux, familles CP/NEI/VEN et charges nodales incluses. `check_1d_familles_charges.py`. |
 | **1.e** | Extraire Mi/Mj, Vi/Vj, déplacements → recalculer les `tx_*` avec la **même formule** `M/(Wpl·fy)`, γM0=1 ; taux identiques cas par cas. | ✅ **fait** — les 13 `tx_*` identiques **au signe près** (0,000 %) sur les 22 cas élémentaires ; moments critiques du renfort d'épaule vérifiés en détail + gouvernant post-`COMBI_EFF`. `check_1e_taux.py`. |
-| **1.f** | Rebrancher `resoudre_cas` (PyNite) dans `optimise_IPE` ; exécuter les **3 jeux de validation** + cas aléatoires ; **sections retenues identiques**. | ⬜ à faire. Flag `MOTEUR = "legacy" | "pynite"` pour tourner les deux en parallèle (étape 2). |
+| **1.f** | Rebrancher `resoudre_cas` (PyNite) dans `optimise_IPE` ; exécuter les **3 jeux de validation** + cas aléatoires ; **sections retenues identiques**. | ✅ **fait** — 3 jeux + 12 cas aléatoires reproductibles (seed 20240601) : **sections retenues identiques** partout (dont un `PasDeSolutionIPE` concordant), aucun écart sur `fleche`/`ratio_*`/`taux_trav`/`masse`. `check_1f_optimise.py`. |
 | **1.g** | Nettoyage : retirer le code legacy **seulement après accord explicite**, ou le garder sous `MOTEUR="legacy"` pour l'étape 2. | ⬜ à faire (dernier). |
 
 #### Audit réalisé (session 1) — synthèse
@@ -1094,7 +1094,7 @@ Backend assembleur (option A) : `m.Ke()` de PyNite, puis partition /
 autonome et figé par sous-étape (`check_1a_sans_jarret.py`,
 `check_1b_renfort_epaule.py`, `check_1b_profilage.py`,
 `check_1c_cl_et_vent.py`, `check_1d_familles_charges.py`,
-`check_1e_taux.py`), rejouables
+`check_1e_taux.py`, `check_1f_optimise.py`), rejouables
 (sortie `0`/`1`). À relancer lors de toute montée de version de PyNite ou
 refactor du moteur. Voir le `README.md` du dossier.
 
@@ -1142,6 +1142,25 @@ efforts PyNite avec la **formule legacy exacte** (`M/(Wpl·fy/10)/100`,
   d'épaule est donc l'arbalétrier **en sortie de jarret**, pas le genou —
   cohérent avec l'hypothèse d'audit (le renfort constant 1,66·h sur-résiste
   au genou et reporte la demande sur la traverse courante).
+
+#### Étape 1.f — validée (boucle `optimise_IPE` complète)
+
+`check_1f_optimise.py` : **monkeypatch** de `calcport.calcport` (résolution
+d'un cas → `ens_resu`) et `calcport.optimise_IPE` (installe le `resoudre_cas`
+PyNite pour la liste de charges courante), **sans toucher au fichier**. La
+boucle `optimise_IPE` du legacy tourne inchangée (prédim, incréments IPE,
+`COMBI_DEPL`/`COMBI_EFF`, critères) ; seule la résolution est PyNite. Le
+`ens_resu` PyNite est renvoyé **en convention legacy** (déplacements =
+`−DX/−DY` PyNite ; 13 `tx_*` via règle de signe 2) → drop-in exact.
+- 3 jeux `validation/` : sections retenues identiques.
+- **12 cas aléatoires reproductibles** (seed 20240601 ; communes ×10, `hpot`
+  300–1000, `portee` 600–2200, pente 0,05–0,20, `h_acro` 0/100/150,
+  rugosité 0–IV, couv/divers variés) : **sections retenues identiques**
+  partout, dont un cas `PasDeSolutionIPE` concordant. Aucun écart sur
+  `fleche` / `ratio_fleche` / `ratio_depl` / `taux_trav` / `masse`.
+- Backend du check = PyNite "natif" (`analyze_linear` + `member.*()`),
+  suffisant pour la justesse ; le backend "assembleur" (perf) donne les
+  mêmes nombres (1.c).
 
 #### Jeux de validation (étape 2) — entrées `charge_et_sections`
 
