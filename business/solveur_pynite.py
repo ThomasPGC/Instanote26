@@ -31,6 +31,7 @@ version est un projet à part (re-run des scripts `validation/pynite_check/`).
 import numpy as np
 import scipy.linalg as sla
 from Pynite import FEModel3D
+from Pynite import Analysis
 
 from calcport import E, IPE, jarret, def_noeud_barres
 
@@ -119,8 +120,10 @@ class SolveurPyNite:
             m.add_member_dist_load(f"M{k}", "FY", -1.0, -1.0, case=f"__SW{k}")
             m.add_load_combo(f"__SW{k}", {f"__SW{k}": 1.0})
 
-        # prépare le modèle (numérotation des DDL, sous-membres, etc.)
-        m.analyze_linear(sparse=False, check_stability=False, check_statics=False)
+        # Prépare le modèle (numérotation des DDL `node.ID`, `member.active`,
+        # sous-membres) sans résoudre : ~1 ms au lieu de ~20 ms pour un
+        # `analyze_linear` complet dont on n'a besoin de rien d'autre.
+        Analysis._prepare_model(m)
         self._m = m
         self._nN = len(m.nodes)
 
