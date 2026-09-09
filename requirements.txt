@@ -15,3 +15,8 @@ disposable-email-domains
 
 # Migrations de schéma de base de données
 alembic==1.19.2
+
+# Back office admin (session 10)
+sqladmin==0.31.1
+itsdangerous==2.2.0  # requis par SessionMiddleware (auth SQLAdmin) ; pas tiré auto par sqladmin
+# wtforms est tiré automatiquement par sqladmin
