@@ -866,6 +866,37 @@ enchaîner sans avoir validé l'étape précédente.
 - Adapter l'optimisateur pour jouer sur ce paramètre en plus du choix IPE
   (ex : rallonger de quelques cm peut faire redescendre d'une section)
 
+### Étape 8 — Option nuance d'acier en fin de calcul + renommage des forfaits
+
+Contexte : les tests de validation croisée (étape 2) montrent que l'écart
+entre le moteur interne et les logiciels de référence croît avec le taux
+de travail ELU du portique (zone de marge faible). Pour les cas proches
+de la limite de résistance, proposer une nuance d'acier supérieure
+(S275/S355) permet de gagner une ou plusieurs sections IPE sans toucher
+à l'ELS (le module d'élasticité E est identique entre nuances : seule fy
+change, donc seules les vérifications de résistance sont affectées, pas
+les déplacements).
+
+Fonctionnalité :
+- En fin de calcul, si le dimensionnement est piloté par une vérification
+  de résistance (pas de déplacement), proposer à l'utilisateur les
+  sections obtenues en S275 et S355 en plus du S235 par défaut
+- Recalculer la classification de section (classe 1/2/3/4) pour chaque
+  nuance, ne pas se contenter d'appliquer un facteur sur le taux de travail
+- L'utilisateur choisit la nuance qui lui convient
+
+Prérequis (à traiter AVANT d'implémenter cette fonctionnalité) :
+Les forfaits d'abonnement actuels s'appellent S235/S275/S355 (grades
+EN 10025). Une option de nuance d'acier sur le calcul dans le même
+vocabulaire créerait une confusion forte entre "palier d'abonnement" et
+"matériau de la structure". Renommer les forfaits AVANT d'introduire
+cette fonctionnalité (impact : base de données - champ plan par défaut
+"S235", UI, et éventuellement Stripe si déjà intégré à ce moment-là).
+
+Cette étape se place après la validation croisée et l'audit des charges
+de vent — c'est un ajout produit à part entière, pas une correction de
+justesse.
+
 Règle de méthode : chaque étape = une session dédiée, validée et
 commitée avant de passer à la suivante. Pas de mélange d'étapes dans une
 même session.
