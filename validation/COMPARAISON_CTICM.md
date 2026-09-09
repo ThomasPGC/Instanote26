@@ -9,9 +9,19 @@ Sources CTICM : `validation/cas-*/synthese*.pdf` (PORTAL+ vv 11.3399,
 **taux d'utilisation** (0–1). Entrées Instanote : cf. `CLAUDE.md`, « Jeux de
 validation (étape 2) ».
 
-> ⚠️ Les synthèses PORTAL+ donnent les **taux**, pas les **sections IPE
-> retenues** par CTICM. La colonne « sections CTICM » reste à confirmer depuis
-> les notes CTICM complètes (`validation/cas-*/… CTICM.pdf`).
+**Sections IPE retenues par CTICM** (confirmées par le user, pas dans les
+synthèses PORTAL+) :
+
+| cas | poteaux | arbalétriers | vs Instanote |
+|---|---|---|---|
+| cas-01-compact | IPE 160 | IPE 140 | **identiques** |
+| cas-03-haut-fin | IPE 600 | IPE 500 | **identiques** |
+| cas-02-bas-large | IPE 600 | **IPE 500** | poteaux identiques ; **arbalétriers 2 crans sous Instanote** (IPE 500 vs IPE 600) |
+
+→ Sur cas-02, CTICM dimensionne l'arbalétrier à IPE 500 là où Instanote exige
+IPE 600 : **l'influence du jarret devient prépondérante**. C'est le signal le
+plus net pour l'**étape 3** de la roadmap moteur (jarret discrétisé en barres
+à inertie variable au lieu de la barre prismatique `1,66·h`).
 
 ## 1. Les 3 modes Instanote
 
@@ -96,17 +106,19 @@ choix assumé) :
 L'instabilité fait passer le taux gouvernant CTICM au-dessus du taux de
 section (ex. cas-02 : 0,887 → 0,946). Instanote ne verra jamais cette marche.
 
-## 5. Conclusion (à valider par le user)
+## 5. Conclusion
 
 - **Le bug `Sij` est un défaut réel mais mineur** : −0,14 à −1,15 point sur
   `taux_max`, **aucune section retenue changée** sur ces 3 cas + ~50 aléatoires.
-- **Il n'explique pas l'écart avec CTICM** (jusqu'à ~10 points sur cas-02).
-  L'écart croît avec le taux ELU et pointe vers : la modélisation du **jarret
-  `1,66·h` constant** (hypothèse d'audit n° 1), et/ou le **calcul du moment**
-  dans le poteau / l'arbalétrier (répartition de charges N/V, appuis, offsets
-  d'assemblage). À creuser aux étapes 3–4 de la roadmap moteur.
-- **Décision « corriger le bug `Sij` en prod ? »** : le correctif est prêt
-  (`fix/legacy-sij`, coût perf +12–21 %, sorties = `pynite_corrige`). Comme il
-  ne change aucune section mais rend l'ELU physiquement cohérent, il est *sain*
-  de le prendre — mais sans urgence (impact quasi nul sur le résultat livré).
-  À trancher explicitement avant tout déploiement Railway.
+  → **Corrigé** (branche `fix/legacy-sij`, dans le legacy comme dans PyNite),
+  coût perf +12–21 %. Sain de le prendre (ELU physiquement cohérent), même si
+  l'impact sur le résultat livré est quasi nul.
+- **Il n'explique PAS l'écart avec CTICM** (jusqu'à ~10 points sur cas-02).
+  L'écart **croît avec le taux ELU** (confirmé sur les 3 cas) et pointe vers
+  la modélisation du **jarret `1,66·h` constant** : sur cas-02, CTICM
+  dimensionne l'arbalétrier 2 crans plus bas (IPE 500 vs IPE 600). C'est
+  l'objet de l'**étape 3** de la roadmap moteur (jarret discrétisé). Autres
+  pistes secondaires : calcul du moment (charges N/V, appuis, offsets
+  d'assemblage) — étape 4.
+- **Déploiement** : après validation locale manuelle du user, `MOTEUR_CALCUL=
+  pynite` sur Railway.
