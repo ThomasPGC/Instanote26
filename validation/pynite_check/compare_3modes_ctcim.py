@@ -2,16 +2,18 @@
 """Comparaison des backends sur les 3 jeux de validation — support de la
 comparaison croisée CTICM (roadmap moteur, étapes 2 et 3).
 
-Modes (via MOTEUR_CALCUL / N_DISC_JARRET, un sous-processus par mode) :
+Modes (via MOTEUR_CALCUL / N_DISC_JARRET / JARRET_EXCENTRE, un sous-processus
+par mode) :
   - `legacy`          : solveur maison, jarret prismatique `1,66·h` ;
   - `pynite ancien`   : backend PyNite, `N_DISC_JARRET=1` — identique au legacy ;
-  - `pynite discrétisé`: backend PyNite, `N_DISC_JARRET=6` — jarret à inertie
-    variable `2·h -> 1·h` (étape 3).
+  - `pynite discrétisé`: backend PyNite, `N_DISC_JARRET=6`, jarret à inertie
+    variable `2·h -> 1·h` **+ excentré sur l'axe neutre** (défaut de l'étape 3 ;
+    `JARRET_EXCENTRE=0` pour comparer en colinéaire — cf. `check_3f_excentre.py`).
 
 Les deux premières colonnes doivent être identiques (bug `Sij` corrigé des deux
-côtés depuis fix/legacy-sij). La 3ᵉ montre l'effet du jarret discrétisé. Les
-chiffres historiques à 3 modes (legacy bugué / pynite parité / corrigé) sont
-figés dans `validation/COMPARAISON_CTICM.md` § 1.
+côtés depuis fix/legacy-sij). La 3ᵉ montre l'effet du jarret discrétisé +
+excentré. Les chiffres historiques à 3 modes (legacy bugué / pynite parité /
+corrigé) sont figés dans `validation/COMPARAISON_CTICM.md` § 1.
 
 Sortie : par cas et par mode — poteau/traverse retenus, `taux_trav` arrondi,
 `taux_max` brut recalculé, flèche, masse.

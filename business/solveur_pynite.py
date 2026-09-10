@@ -132,17 +132,22 @@ class SolveurPyNite:
         #   >1 -> jarret discrétisé à inertie variable (étape 3). Le legacy n'a
         #         PAS cette variante : parité vérifiée seulement en `n_disc=1`.
         #
-        # `excentre` : [PROTOTYPE étape 3] abaisser les nœuds du jarret sur
-        #   l'axe neutre (centre de gravité) de sa section. La géométrie dépend
-        #   alors de la traverse -> le modèle est (re)construit à chaque
-        #   changement de `arba` (mis en cache). `None` -> lit `JARRET_EXCENTRE`.
+        # `excentre` (étape 3) : abaisser les nœuds du jarret sur son axe neutre
+        #   (ligne des centres de gravité des sections successives des tronçons) ;
+        #   le nœud d'épaule = sommet du poteau -> poteau modélisé raccourci, et
+        #   jarret non colinéaire à la traverse. La géométrie dépend alors de la
+        #   traverse -> le modèle est (re)construit à chaque changement de `arba`
+        #   (mis en cache, ~10 fois par `optimise_IPE`). Effet secondaire (FER
+        #   des charges réparties) négligeable ; effet principal (bras de levier
+        #   du poteau) voulu. `None` -> lit `JARRET_EXCENTRE` (défaut activé ;
+        #   `JARRET_EXCENTRE=0` -> jarret colinéaire à la traverse).
         self._charges = charges
         self._noms = [c[0] for c in charges]
         self._cp = self._noms[0]                      # le 1er cas est toujours "CP..."
         self._geom = geom
         self._n_disc = n_disc
         if excentre is None:
-            excentre = os.environ.get("JARRET_EXCENTRE") == "1"
+            excentre = os.environ.get("JARRET_EXCENTRE", "1") != "0"
         self._excentre = bool(excentre) and n_disc > 1
         self._cache_build = {}                        # arba -> état de modèle (mode excentré)
         self._arba_courant = None

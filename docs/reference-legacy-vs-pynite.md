@@ -474,6 +474,15 @@ forme subsiste.
   reproduit exactement les 7 nœuds / 6 barres de `def_noeud_barres`,
   `N_DISC_JARRET>1` insère `n−1` nœuds intérieurs par jarret (numérotés N7…,
   N0..N6 gardent leurs indices).
+- **Excentrement (`JARRET_EXCENTRE`, défaut activé).** Les nœuds du jarret sont
+  abaissés sur la **ligne des centres de gravité** des sections des tronçons
+  (axe neutre de flexion) : `offset = (H - h/2) - z_G`. Le nœud d'épaule étant
+  le sommet du poteau, le **poteau modélisé est raccourci** (~0,05·hpot pour un
+  cas compact, ~0,28·h_traverse pour un cas bas et large) ; le jarret n'est
+  plus colinéaire à la traverse. La géométrie dépend alors de la **traverse** →
+  `SolveurPyNite` reconstruit son modèle (et les caches `FER` / `_T` / RHS) à
+  chaque changement de `arba`, mis en cache. Effet principal recherché : bras
+  de levier du poteau plus court → moment de tête plus faible.
 - **Statut.** **Parité legacy ↔ PyNite garantie seulement en
   `N_DISC_JARRET=1`** (harnais `check_1g`, `check_3c`). En `N_DISC_JARRET=6`
   (défaut prod), les deux backends modélisent le jarret différemment — le

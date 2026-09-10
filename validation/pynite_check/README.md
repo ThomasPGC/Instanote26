@@ -32,8 +32,9 @@ ce qui a été testé, quand.
 | `check_3a_section_jarret.py` | 3.a | `caracs_section_jarret` (I à 3 semelles + congés `r`, intégration du contour) recoupée avec **PropSection v1.0.4** (`validation/jarrets/*.png`) sur IPE 160/300/450, hr = 150 % et ~200 % ; garde-fou intégrateur (contour 2 semelles == IPE catalogue) ; monotonie de la loi dégressive ; `sections_jarret(arba, 1)` == `[jarret(arba)]`. |
 | `check_3b_topologie.py` | 3.b | `construire_topologie` / `expanser_charges` / `sections_par_barre` : `n_disc=1` reproduit `def_noeud_barres` ; `n_disc=6` (17 nœuds / 16 barres, N0..N6 préservés, tronçons colinéaires, épaule ancrée) ; identité de l'expansion de charges en `n_disc=1` ; ordre des nœuds PyNite. |
 | `check_3c_non_regression_ancien_modele.py` | 3.c | `SolveurPyNite(n_disc=1)` == `_SolveurLegacy` clé par clé (< 1e-6 %) sur 3 jeux + 15 géométries aléatoires. **Gate « legacy = oracle de l'ancien modèle ».** |
-| `check_3d_discretise.py` | 3.d | Modèle discrétisé (`N_DISC_JARRET=6`) sur les 3 jeux : non-régression vs référence figée + garde de sécurité (sections jamais plus légères que l'ancien modèle, `taux_max` ne chute pas > 5 pts) + suivi de l'écart CTICM (informatif). |
+| `check_3d_discretise.py` | 3.d | Modèle discrétisé **+ excentré** (`N_DISC_JARRET=6`, `JARRET_EXCENTRE` défaut) sur les 3 jeux : non-régression vs référence figée + garde de sécurité (sections jamais **sous le CTICM**, `taux_max` ne s'effondre pas > 8 pts sous l'ancien modèle) + suivi (informatif). |
 | `check_3e_profilage.py` | 3.e | Profilage : `resoudre` n=1 vs n=6 ; dense vs creux sur la matrice réduite (47×47). Pas de verdict — justifie de rester en dense. |
+| `check_3f_excentre.py` | 3.f | Comparaison jarret **colinéaire** (`JARRET_EXCENTRE=0`) vs **excentré sur l'axe neutre** (défaut) sur les 3 jeux + géométries aléatoires. Pas de verdict — outil de décision. |
 
 ## Rejouer
 

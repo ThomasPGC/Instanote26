@@ -112,51 +112,75 @@ de l'épaule vers la sortie (vérifié IPE 160/240/400/600). Le dernier tronçon
 traverse nue — c'est voulu (le gousset a sa propre semelle inférieure sur toute
 sa longueur).
 
-## 4. Résultats sur les 3 jeux de validation
+## 4. Jarret excentré sur son axe neutre (sous-étape 3.f — **par défaut**)
 
-`legacy` (jarret `1,66·h`) vs `pynite discrétisé` (`N_DISC_JARRET=6`,
-loi `2h→1h`) — `compare_3modes_ctcim.py` :
+Le jarret discrétisé **colinéaire** à la traverse (loi `2h→1h`) ne changeait
+**aucune section retenue** sur les 3 jeux (`taux_max` : −0,07 / −0,66 / −0,07 pt,
+flèche/dérive +1 à +2 %). Le `1,66·h` prismatique ne faussait donc pas le
+dimensionnement — mais la modélisation restait grossière : les barres du jarret
+étaient portées par la fibre moyenne de la **traverse nue**, alors que leur
+section (âme jusqu'à `2h`) a son centre de gravité nettement plus bas.
+
+**Correction (demande du user) :** chaque nœud du jarret (épaule, intérieurs,
+sortie) est abaissé sur la **ligne des centres de gravité** des sections
+successives des tronçons (axe neutre de flexion, théorie des poutres). Le nœud
+d'épaule étant le sommet du poteau, celui-ci est **physiquement raccourci** ;
+le jarret n'est plus colinéaire à la traverse. `offset_axe_neutre(arba,
+h_ratio) = (H − h/2) − zG`. Offset au nœud interne `p` = moyenne des deux
+tronçons adjacents ; à l'épaule = tronçon le plus profond ; en sortie ≈ tronçon
+`h_ratio≈1,08` (petit résidu : le gousset a encore sa semelle inférieure).
+
+Ordre de grandeur de l'abaissement du sommet de poteau : ~0,047·hpot pour
+cas-01 (IPE 140, ~6,5 cm) ; ~0,28·h_traverse pour cas-02 (IPE 600, ~28 cm).
+
+`legacy` vs `pynite colinéaire` (`JARRET_EXCENTRE=0`) vs **`pynite excentré`
+(défaut)** — `check_3f_excentre.py` :
 
 | cas | mode | poteau / traverse | taux_trav | taux_max brut | flèche | dérive | masse |
 |---|---|---|---|---|---|---|---|
-| cas-01-compact | legacy | IPE 160 / IPE 140 | 40 % | 37,84 % | 2,8 | 21,8 | 168 |
-| | **discrétisé** | IPE 160 / IPE 140 | 40 % | **37,77 %** | 2,9 | 22,2 | 168 |
+| cas-01-compact | legacy | IPE 160 / IPE 140 | 40 % | 37,84 % | 2,8 | 21,8 (H/160) | 168 |
+| | colinéaire | IPE 160 / IPE 140 | 40 % | 37,77 % | 2,9 | 22,2 (H/157) | 168 |
+| | **excentré** | IPE 160 / IPE 140 | 40 % | **37,08 %** | 2,8 | **21,4 (H/163)** | 168 |
 | cas-02-bas-large | legacy | IPE 600 / IPE 600 | 100 % | 98,84 % | 57,4 | 4,7 | 4174 |
-| | **discrétisé** | IPE 600 / IPE 600 | 100 % | **98,18 %** | 58,1 | 4,9 | 4174 |
-| cas-03-haut-fin | legacy | IPE 600 / IPE 500 | 50 % | 54,92 % | 2,0 | 61,9 | 3242 |
-| | **discrétisé** | IPE 600 / IPE 500 | 50 % | **54,85 %** | 2,0 | 62,9 | 3242 |
+| | colinéaire | IPE 600 / IPE 600 | 100 % | 98,18 % | 58,1 | 4,9 | 4174 |
+| | **excentré** | IPE 600 / **IPE 550** | 100 % | **98,26 %** | 64,2 | 5,6 | **3786** |
+| cas-03-haut-fin | legacy | IPE 600 / IPE 500 | 50 % | 54,92 % | 2,0 | 61,9 (H/161) | 3242 |
+| | colinéaire | IPE 600 / IPE 500 | 50 % | 54,85 % | 2,0 | 62,9 (H/158) | 3242 |
+| | **excentré** | IPE 600 / IPE 500 | 50 % | **54,02 %** | 2,0 | **59,7 (H/167)** | 3242 |
 
-**Aucune section retenue ne change.** `taux_max` bouge de −0,07 / −0,66 /
-−0,07 point. Flèche/dérive +1 à +2 % (le jarret discrétisé est un peu plus
-souple : la loi `2h→1h` passe la majeure partie de sa longueur sous `1,66·h`).
-`pynite ancien` (`N_DISC_JARRET=1`) est identique au legacy au chiffre près.
+- **cas-02 : IPE 600/600 → IPE 600/550** (−388 kg). Un cran vers l'IPE 500 de
+  CTICM. À sections forcées, `tx_mom_pot` gouvernant : 103,1 % (colinéaire) →
+  **100,3 %** (excentré) à IPE 600/500 — l'excentrement gagne 2,8 pts, il en
+  fallait ~3,1 → toujours rejeté d'un cheveu.
+- **cas-01, cas-03 : sections inchangées**, dérive améliorée (poteau plus
+  court = plus raide) — marge regagnée sur le critère H/150 qui gouverne ces
+  deux cas.
+- Série aléatoire (6 géométries) : 5 inchangées, 1 gagne un cran d'arbalétrier.
+  Aucun cas ne bascule en échec, aucune section sous le CTICM.
 
-Détail des taux à l'épaule vs sortie (cas-02, section retenue) : `tx_mom_renf`
-50,8 % (legacy) → 39,5 % (discrétisé) — le tronçon d'épaule `h_ratio≈1,92` a un
-`Wpl` bien supérieur au `1,66·h` constant ; `tx_mom_pied_arba` reste < 40 %.
+**Coût architecture.** La géométrie dépend maintenant de la **traverse** (pas du
+poteau) → `SolveurPyNite` reconstruit son modèle (et les caches de forces `FER`,
+`_T`, RHS) **à chaque changement de `arba`** (~10 fois par `optimise_IPE`), mis
+en cache. Surcoût mesuré : +~0,2 ms en régime établi, +~10-20 ms sur un
+`charge_et_sections` complet. La matrice de rigidité, elle, était déjà
+réassemblée + refactorisée à chaque itération (les sections changent). Effets
+secondaires (décalage du `FER` des charges réparties dû au léger changement de
+longueur/angle des barres ; charges nodales de rive de `chargement_nv` qui
+gardent l'angle de toiture nominal) : quelques dixièmes de pour-cent, négligeables
+à ce niveau — à revoir éventuellement à l'étape 4.
 
-### Écart CTICM — cas-02 « bas et large » : NON résorbé par la discrétisation
+### Écart CTICM — cas-02 « bas et large » : réduit à 1 cran, pas résorbé
 
-CTICM dimensionne l'arbalétrier à **IPE 500** là où Instanote exige **IPE 600**
-(2 crans). La discrétisation du jarret **ne change rien** à ce constat, et c'est
-attendu : le point gouvernant de cas-02 est le **moment de poteau** en tête
-(`tx_mom_pot ≈ 98 %`), pas le jarret. Test à sections forcées :
+Le point gouvernant de cas-02 reste le **moment de poteau** en tête
+(`tx_mom_pot`), pas le jarret. L'excentrement le fait passer de 103,1 % à
+100,3 % (IPE 600/500) — il manque ~0,3 point. Les taux d'arbalétrier sont tous
+< 55 %. L'écart résiduel (~10 → ~0,3 pt de marge sur le poteau) pointe vers le
+traitement des **zones de vent de rive** (**étape 4**) et la modélisation fine
+de la liaison poteau/traverse (le jarret ne raidit que l'arbalétrier —
+**étape 7**, longueur de jarret variable). **Non bloquant** (acté par le user).
 
-| section | tx_mom_pot (ELU gouvernant) | verdict |
-|---|---|---|
-| IPE 600 / IPE 500 | **103,1 %** | rejeté |
-| IPE 600 / IPE 550 | 100,9 % | rejeté |
-| IPE 600 / IPE 600 | 98,2 % | retenu |
-
-Un arbalétrier plus raide (IPE 600) soulage le moment de poteau (moins de
-rotation à l'épaule) → Instanote a besoin d'IPE 600 pour passer la vérification
-du **poteau**, pas de l'arbalétrier (dont tous les taux sont < 55 %). L'écart
-de ~10 points sur le moment de poteau vs CTICM (déjà relevé dans
-`validation/COMPARAISON_CTICM.md` §2) n'est donc **pas** porté par le renfort
-d'épaule. Pistes restantes : traitement des zones de vent de rive F/G/J
-(**étape 4**), et modélisation du jeu de la liaison poteau/traverse (le jarret
-ne raidit ici que l'arbalétrier, pas la tête de poteau — cf. étape 7, longueur
-de jarret variable). Le user a acté ce résultat comme **non bloquant**.
+Flag : `JARRET_EXCENTRE` (défaut activé pour `N_DISC_JARRET>1` ;
+`JARRET_EXCENTRE=0` → jarret colinéaire, pour comparaison / debug).
 
 ## 5. Diagnostic a posteriori — effort tranchant
 
@@ -171,9 +195,12 @@ max sur **tous** les tronçons, combinaison ELU.
 
 | cas | contribution effort tranchant à la flèche | cisaillement d'âme jarret (max) |
 |---|---|---|
-| cas-01-compact | **+0,3 %** | 11,4 % |
-| cas-02-bas-large | **+0,9 %** | 20,6 % |
-| cas-03-haut-fin | **+0,6 %** | 14,5 % |
+| cas-01-compact | **+0,3 %** | 11,0 % |
+| cas-02-bas-large | **+0,8 %** | 23,0 % |
+| cas-03-haut-fin | **+0,6 %** | 13,5 % |
+
+(valeurs du modèle excentré ; en colinéaire : +0,3 / +0,9 / +0,6 % et
+11,4 / 20,6 / 14,5 %.)
 
 → La déformation d'effort tranchant pèse **moins de 1 %** sur la flèche/dérive
 des portiques IPE : l'hypothèse Euler-Bernoulli du solveur est bien justifiée,
@@ -220,16 +247,18 @@ des barres dont la section ne change pas d'une itération à l'autre.
 | `check_3a_section_jarret.py` | section 3 semelles + `r` vs PropSection (IPE 160/300/450) ; garde-fou intégrateur ; monotonie ; `sections_jarret(_,1)==[jarret()]` | **0** |
 | `check_3b_topologie.py` | topologie + expanseur : `n_disc=1` == `def_noeud_barres` ; `n_disc=6` sain ; ordre nœuds PyNite | **0** |
 | `check_3c_non_regression_ancien_modele.py` | `SolveurPyNite(n_disc=1)` == `_SolveurLegacy` (< 1e-6 %) sur 3 jeux + 15 aléatoires | **0** |
-| `check_3d_discretise.py` | non-régression du modèle discrétisé (référence figée) + garde de sécurité + suivi CTICM | **0** |
+| `check_3d_discretise.py` | non-régression du modèle discrétisé **+ excentré** (référence figée) + garde (pas sous CTICM, taux_max ne s'effondre pas) | **0** |
 | `check_3e_profilage.py` | profilage n=1 vs n=6, dense vs creux | (pas de verdict) |
+| `check_3f_excentre.py` | comparaison colinéaire vs excentré (3 jeux + aléatoires) | (pas de verdict) |
 | `check_1a…1g` + `check_deps_runtime` | rejoués — inchangés. `check_1g` **épinglé à `N_DISC_JARRET=1`** (parité = ancien modèle) | **0** |
 
 ## 9. Reste à faire pour clôturer l'étape
 
 1. Doc : `docs/moteur-de-calcul.md`, `docs/reference-legacy-vs-pynite.md`,
-   `CLAUDE.md`, `validation/COMPARAISON_CTICM.md` — **fait dans ce commit**.
-2. Validation manuelle du user (calcul réel, encart cisaillement, export PDF).
-3. **Commit final séparé** : bascule `MOTEUR_CALCUL` défaut `legacy → pynite`
-   dans `calcport.py` + `CLAUDE.md`, après feu vert du user.
-4. Déploiement Railway : `MOTEUR_CALCUL=pynite` déjà prévu ; `N_DISC_JARRET`
-   laissé au défaut (6).
+   `CLAUDE.md`, `validation/COMPARAISON_CTICM.md` — **fait**.
+2. **Validation manuelle du user en local** (`MOTEUR_CALCUL=pynite` dans `.env`) :
+   calcul réel, encart cisaillement, export PDF, `/compte`.
+3. Si OK → push. **Commit de bascille séparé** : `MOTEUR_CALCUL` défaut
+   `legacy → pynite` dans `calcport.py` + `CLAUDE.md`.
+4. Railway : poser `MOTEUR_CALCUL=pynite` s'il n'y est pas déjà ; `N_DISC_JARRET`
+   et `JARRET_EXCENTRE` laissés au défaut (6 / activé).

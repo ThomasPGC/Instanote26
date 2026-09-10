@@ -100,31 +100,38 @@ résultats (écran + PDF), acceptation à l'inscription.
   (`jarret()`), figé = oracle de l'ancien modèle. **pynite** (étape 3 faite) =
   discrétisé en `N_DISC_JARRET` (défaut 6) tronçons, âme dégressive linéaire
   `2·h → 1·h`, section I à 3 semelles + congés `r` recoupée PropSection
-  (`jarret_discret.caracs_section_jarret`). Longueur inchangée (10 % portée).
+  (`jarret_discret.caracs_section_jarret`) ; **nœuds excentrés sur l'axe neutre**
+  (poteau modélisé raccourci ; `JARRET_EXCENTRE`, défaut activé). Longueur
+  inchangée (10 % portée).
 - **S235 seul** (`fy = 235` en dur).
 - **Combinaisons `COMBI_DEPL` / `COMBI_EFF` inchangées.** Si un oubli EC0
   manifeste est repéré : **le signaler au user avant** toute correction.
 
-### `MOTEUR_CALCUL` / `N_DISC_JARRET` (variables d'env)
+### `MOTEUR_CALCUL` / `N_DISC_JARRET` / `JARRET_EXCENTRE` (variables d'env)
 - `MOTEUR_CALCUL` absente / `legacy` → solveur maison, renfort d'épaule
   `1,66·h` prismatique ; `pynite` (alias `pynite_corrige`) →
-  `business/solveur_pynite.py`, renfort d'épaule **discrétisé**.
+  `business/solveur_pynite.py`, renfort d'épaule **discrétisé + excentré**.
 - `N_DISC_JARRET` : tronçons par renfort d'épaule (défaut **6**). `1` = ancien
   modèle (barre unique), utilisé par les harnais de parité.
+- `JARRET_EXCENTRE` : `0` = jarret colinéaire à la traverse ; sinon (défaut) =
+  nœuds sur l'axe neutre (si `N_DISC_JARRET>1`).
 - **Résultats identiques seulement en `N_DISC_JARRET=1`.** Défaut code =
-  `legacy` (bascule vers `pynite` = commit final de l'étape 3, après validation
+  `legacy` (bascule vers `pynite` = commit séparé au push, après validation
   manuelle) ; Railway = `pynite`.
 
 ### État d'avancement
 - **Étape 1 (bascule PyNite) : faite et validée** — journal
   `docs/historique/bascule-pynite-etape1.md`.
 - **Étape 2 (validation croisée CTICM) : validée** — `validation/COMPARAISON_CTICM.md`.
-- **Étape 3 (jarret discrétisé) : faite** — branche `feat/jarret-discretise-etape3`.
-  Section 3 semelles + `r` recoupée PropSection ; legacy figé = oracle ;
-  diagnostic cisaillement non bloquant. **Aucune section retenue ne change** sur
-  les 3 jeux ; écart CTICM cas-02 porté par le moment de poteau (→ étape 4).
-  Journal : `docs/historique/jarret-discretise-etape3.md`. **Reste :** validation
-  manuelle user, puis commit de bascule `MOTEUR_CALCUL` défaut `legacy → pynite`.
+- **Étape 3 (jarret discrétisé + excentré) : faite** — branche
+  `feat/jarret-discretise-etape3`. Section 3 semelles + `r` recoupée PropSection ;
+  nœuds du jarret sur l'axe neutre ; legacy figé = oracle ; diagnostic
+  cisaillement non bloquant. **cas-02 « bas et large » IPE 600/600 → IPE 600/550**
+  (−388 kg, 1 cran du CTICM ; résiduel = moment de poteau → étape 4) ;
+  cas-01/03 inchangés. Journal :
+  `docs/historique/jarret-discretise-etape3.md`. **Reste :** validation manuelle
+  user en local (`MOTEUR_CALCUL=pynite` dans `.env`), puis push + commit de
+  bascule `MOTEUR_CALCUL` défaut `legacy → pynite`.
 - **Étape 4 (audit des charges de vent) : prochaine.**
 - Scripts de parité : `validation/pynite_check/` (`check_1*` + `check_3*` — à
   relancer à toute montée de version PyNite ou refactor moteur ; PyNite **piqué

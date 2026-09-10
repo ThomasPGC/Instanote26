@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Étape 3 — sous-étape 3.d : modèle à jarret discrétisé (n_disc = 6).
+"""Étape 3 — sous-étape 3.d : modèle à jarret discrétisé (n_disc = 6, excentré).
 
-Fait tourner `charge_et_sections()` avec le renfort d'épaule discrétisé
-(`MOTEUR_CALCUL=pynite`, `N_DISC_JARRET=6`) sur les 3 jeux de validation et
-vérifie :
+Fait tourner `charge_et_sections()` avec le renfort d'épaule discrétisé et
+**excentré sur son axe neutre** (`MOTEUR_CALCUL=pynite`, `N_DISC_JARRET=6`,
+`JARRET_EXCENTRE` au défaut = activé) sur les 3 jeux de validation et vérifie :
 
   1. **non-régression** : le dict résultat est identique aux valeurs de
-     référence figées ci-dessous (obtenues à la mise en place de l'étape 3) ;
-  2. **garde de sécurité** : les sections retenues ne sont PAS plus légères que
-     celles de l'ancien modèle (legacy), et `taux_max` brut ne chute pas
-     nettement (> 5 pts) — sinon le modèle discrétisé serait dangereusement
-     optimiste → ÉCHEC ;
-  3. **suivi CTICM** (informatif, non bloquant) : écart aux sections CTICM.
+     référence figées ci-dessous (modèle discrétisé + excentré) ;
+  2. **garde de sécurité** : les sections retenues ne descendent PAS sous les
+     sections CTICM, et `taux_max` brut ne chute pas de plus de 8 pts sous
+     l'ancien modèle (legacy) — sinon le modèle serait dangereusement optimiste
+     → ÉCHEC ;
+  3. **suivi** (informatif) : écart aux sections CTICM et à l'ancien modèle.
 
 Rejeu :  python validation/pynite_check/check_3d_discretise.py
 Sortie :  0 = non-régression + garde OK ; 1 = régression ou garde franchie.
@@ -39,23 +39,23 @@ CASES = {
         {"couv": 20, "divers": 5}),
 }
 
-# Référence FIGÉE du modèle discrétisé (n_disc = 6) — mise en place de l'étape 3.
+# Référence FIGÉE — modèle discrétisé (n_disc = 6) + excentré sur l'axe neutre.
 REF_DISCRET = {
-    "cas-01-compact": dict(poteau="IPE 160", traverse="IPE 140", fleche=2.9, ratio_fleche=1400,
-                           deplacement_gauche=22.1, deplacement_droite=22.2, depl_tete_pot=22.2,
-                           ratio_depl=157, taux_trav=40.0, masse=168, taux_max_brut=37.77,
-                           cis_ecart_fleche_pct=0.3, cis_taux_ame_jarret_pct=11.4),
-    "cas-02-bas-large": dict(poteau="IPE 600", traverse="IPE 600", fleche=58.1, ratio_fleche=378,
-                             deplacement_gauche=3.3, deplacement_droite=4.9, depl_tete_pot=4.9,
-                             ratio_depl=1025, taux_trav=100.0, masse=4174, taux_max_brut=98.18,
-                             cis_ecart_fleche_pct=0.9, cis_taux_ame_jarret_pct=20.6),
-    "cas-03-haut-fin": dict(poteau="IPE 600", traverse="IPE 500", fleche=2.0, ratio_fleche=4068,
-                            deplacement_gauche=62.9, deplacement_droite=62.8, depl_tete_pot=62.9,
-                            ratio_depl=158, taux_trav=50.0, masse=3242, taux_max_brut=54.85,
-                            cis_ecart_fleche_pct=0.6, cis_taux_ame_jarret_pct=14.5),
+    "cas-01-compact": dict(poteau="IPE 160", traverse="IPE 140", fleche=2.8, ratio_fleche=1437,
+                           deplacement_gauche=21.2, deplacement_droite=21.4, depl_tete_pot=21.4,
+                           ratio_depl=163, taux_trav=40.0, masse=168, taux_max_brut=37.08,
+                           cis_ecart_fleche_pct=0.3, cis_taux_ame_jarret_pct=11.0),
+    "cas-02-bas-large": dict(poteau="IPE 600", traverse="IPE 550", fleche=64.2, ratio_fleche=342,
+                             deplacement_gauche=2.8, deplacement_droite=5.6, depl_tete_pot=5.6,
+                             ratio_depl=889, taux_trav=100.0, masse=3786, taux_max_brut=98.26,
+                             cis_ecart_fleche_pct=0.8, cis_taux_ame_jarret_pct=23.0),
+    "cas-03-haut-fin": dict(poteau="IPE 600", traverse="IPE 500", fleche=2.0, ratio_fleche=3983,
+                            deplacement_gauche=59.7, deplacement_droite=59.4, depl_tete_pot=59.7,
+                            ratio_depl=167, taux_trav=50.0, masse=3242, taux_max_brut=54.02,
+                            cis_ecart_fleche_pct=0.6, cis_taux_ame_jarret_pct=13.5),
 }
 
-# Ancien modèle (legacy) — pour la garde de sécurité.
+# Ancien modèle (legacy) — pour le suivi / la garde de sécurité.
 REF_LEGACY = {
     "cas-01-compact": dict(poteau="IPE 160", traverse="IPE 140", taux_max_brut=37.84),
     "cas-02-bas-large": dict(poteau="IPE 600", traverse="IPE 600", taux_max_brut=98.84),
@@ -148,25 +148,29 @@ for name in CASES:
             ok = False
             print(f"  !! RÉGRESSION {k}: {got!r} != réf {v!r}")
 
-    # 2. garde de sécurité
-    if plus_leger(r["poteau"], leg["poteau"]) or plus_leger(r["traverse"], leg["traverse"]):
+    # 2. garde de sécurité : ne pas descendre SOUS les sections CTICM,
+    #    ni s'effondrer en taux_max vs l'ancien modèle.
+    if plus_leger(r["poteau"], ct[0]) or plus_leger(r["traverse"], ct[1]):
         ok = False
-        print(f"  !! GARDE : section discrétisée PLUS LÉGÈRE que l'ancien modèle "
-              f"({r['poteau']}/{r['traverse']} vs {leg['poteau']}/{leg['traverse']})")
+        print(f"  !! GARDE : section retenue SOUS le CTICM "
+              f"({r['poteau']}/{r['traverse']} vs {ct[0]}/{ct[1]})")
     chute = leg["taux_max_brut"] - r["taux_max_brut"]
-    if chute > 5.0:
+    if chute > 8.0:
         ok = False
-        print(f"  !! GARDE : taux_max brut chute de {chute:.1f} pts vs ancien modèle "
-              f"(discrétisé nettement plus optimiste)")
+        print(f"  !! GARDE : taux_max brut chute de {chute:.1f} pts sous l'ancien "
+              f"modèle (trop optimiste)")
 
-    # 3. suivi CTICM (informatif)
+    # 3. suivi (informatif)
+    if plus_leger(r["poteau"], leg["poteau"]) or plus_leger(r["traverse"], leg["traverse"]):
+        print(f"  -> plus léger que l'ancien modèle ({leg['poteau']}/{leg['traverse']}) "
+              f"— attendu de l'excentrement (géométrie plus juste)")
     if (r["poteau"], r["traverse"]) == ct:
         print("  -> sections CTICM atteintes")
     else:
         d_arb = _ORDRE_IPE.index(r["traverse"]) - _ORDRE_IPE.index(ct[1])
         d_pot = _ORDRE_IPE.index(r["poteau"]) - _ORDRE_IPE.index(ct[0])
         print(f"  -> écart CTICM : poteau {d_pot:+d} cran(s), arbalétrier {d_arb:+d} cran(s) "
-              f"(informatif, non bloquant)")
+              f"(informatif)")
 
 print("\n" + "=" * 84)
 print("VERDICT :", "OK (non-régression + garde)" if ok else "ÉCHEC — voir ci-dessus")

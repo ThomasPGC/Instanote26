@@ -54,11 +54,8 @@ print(json.dumps(out, ensure_ascii=False))
 
 def run(cases, excentre):
     env = dict(os.environ, MOTEUR_CALCUL="pynite", N_DISC_JARRET="6",
-               PYTHONIOENCODING="utf-8")
-    if excentre:
-        env["JARRET_EXCENTRE"] = "1"
-    else:
-        env.pop("JARRET_EXCENTRE", None)
+               PYTHONIOENCODING="utf-8",
+               JARRET_EXCENTRE="1" if excentre else "0")
     dump = _DUMP.replace("__CASES__", repr(cases))
     p = subprocess.run([sys.executable, "-X", "utf8", "-c", dump],
                        capture_output=True, text=True, env=env, cwd=str(REPO))
