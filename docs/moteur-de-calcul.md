@@ -41,12 +41,23 @@ et **acceptation à l'inscription**.
   l'horizon » §4 : piste offre premium / ponts roulants).
 - **Résolution Euler-Bernoulli** (déformation d'effort tranchant négligée
   dans la raideur). PyNite v3 : `add_section` sans aires de cisaillement =
-  pas de terme Timoshenko, donc parité directe. Passage éventuel à
-  Timoshenko réévalué **seulement à l'étape 3** (discrétisation du renfort).
-- **Renfort d'épaule gelé** : 1 barre prismatique, section reconstituée à
-  hauteur `1,66 × h_traverse` (fonction `jarret()`), longueur = 10 % de la
-  portée en projection horizontale. Refonte en barres multiples à inertie
-  variable = **étape 3**, pas avant.
+  pas de terme Timoshenko, donc parité directe. **Étape 3 : maintenu.** Un
+  diagnostic a posteriori (`jarret_discret.diagnostic_cisaillement`, non
+  bloquant) mesure la contribution de l'effort tranchant à la flèche : **< 1 %**
+  sur les 3 jeux de validation → Timoshenko dans la raideur non justifié.
+- **Renfort d'épaule** — **étape 3 faite** : côté backend **PyNite** le renfort
+  est discrétisé en `N_DISC_JARRET = 6` tronçons à inertie variable, âme
+  dégressive **linéaire de `2·h` (épaule) à `1·h` (sortie)** (le `1,66` était une
+  moyenne), section reconstituée en **I à 3 semelles + congés `r`**
+  (`jarret_discret.caracs_section_jarret`, recoupée PropSection à < 0,5 % sur
+  Iy). Longueur inchangée (10 % de la portée). Les nœuds du jarret sont
+  **excentrés sur l'axe neutre** (ligne des centres de gravité des sections des
+  tronçons) : le sommet de poteau descend, le poteau modélisé est raccourci, le
+  jarret n'est plus colinéaire à la traverse (`JARRET_EXCENTRE`, défaut activé).
+  Le **solveur legacy** garde la barre prismatique `1,66·h` (`jarret()`) et
+  devient l'**oracle de l'ancien modèle** : parité legacy ↔ pynite vérifiée
+  seulement en `N_DISC_JARRET=1`. Détail :
+  `docs/historique/jarret-discretise-etape3.md`.
 - **S235 seul** (`fy = 235` en dur ; noter que le paramètre `lim_fy` de
   `calcport()` est mort — non propagé à `calculer_et_verifier_resultats`, à
   traiter à l'étape 8 avec S275/S355).
@@ -58,14 +69,32 @@ et **acceptation à l'inscription**.
 
 - **Étape 1 — bascule PyNite : faite et validée** (sous-étapes 1.a→1.g, découpage
   code A→H, bug `Sij` du legacy corrigé des deux côtés). Détail complet :
-  `docs/historique/bascule-pynite-etape1.md`. **Non poussée / non déployée** —
-  attente de la validation locale manuelle du user, puis push + déploiement.
-- **Étape 2 — validation croisée CTICM : prochaine étape (jalon bloquant).**
+  `docs/historique/bascule-pynite-etape1.md`.
+- **Étape 2 — validation croisée CTICM : validée** (par le user).
+  `validation/COMPARAISON_CTICM.md`.
+- **Étape 3 — jarret discrétisé : faite** (branche `feat/jarret-discretise-etape3`).
+  Section 3 semelles + `r` recoupée PropSection ; topologie paramétrée par
+  `N_DISC_JARRET` ; **nœuds du jarret excentrés sur l'axe neutre** (poteau
+  raccourci) ; solveur legacy figé = oracle de l'ancien modèle ; diagnostic
+  cisaillement a posteriori non bloquant. Résultat sur les 3 jeux :
+  **cas-02 « bas et large » IPE 600/600 → IPE 600/550** (−388 kg, 1 cran de
+  l'IPE 500 de CTICM ; le résiduel est porté par le moment de poteau → étape 4) ;
+  cas-01/03 sections inchangées, marge de dérive regagnée. Détail :
+  `docs/historique/jarret-discretise-etape3.md`. **`MOTEUR_CALCUL` défaut basculé
+  sur `pynite`** (validation locale du user faite).
+- **Étape 4 — audit des charges (vent) : prochaine.**
 
-Variable d'env **`MOTEUR_CALCUL`** : absente/`legacy` → solveur maison
-(méthode des déplacements) ; `pynite` (alias : `pynite_corrige`) →
-`business/solveur_pynite.py`. Résultats **identiques**. Sur Railway :
-`MOTEUR_CALCUL=pynite`. En local : `MOTEUR_CALCUL=pynite python ...`.
+Variables d'env :
+- **`MOTEUR_CALCUL`** : `pynite` (**défaut depuis l'étape 3**) →
+  `business/solveur_pynite.py`, renfort d'épaule **discrétisé + excentré** ;
+  `legacy` → solveur maison, renfort d'épaule `1,66·h` prismatique (oracle de
+  l'ancien modèle). Alias `pynite_corrige`. **Résultats identiques seulement en
+  `N_DISC_JARRET=1`.**
+- **`N_DISC_JARRET`** : nombre de tronçons par renfort d'épaule (défaut **6**).
+  `1` = ancien modèle (barre unique `jarret()`), utilisé par les harnais de
+  parité (`check_1g`, `check_3c`).
+- **`JARRET_EXCENTRE`** : `0` = jarret colinéaire à la traverse ; sinon (défaut)
+  excentré sur l'axe neutre (seulement si `N_DISC_JARRET>1`).
 
 ## Montée de version PyNite (piqué à `==3.0.0`)
 
@@ -123,10 +152,29 @@ chaque géométrie future.
   moment fléchissant, effort normal, section retenue
 - Ne pas passer à l'étape 3 tant que cette validation n'est pas actée
 
-### Étape 3 — Jarrets en suite de petites barres
-- Remplacer l'approximation actuelle (section à 2/3, longueur à 10% arbitraire)
-  par une modélisation en plusieurs barres sur la longueur du jarret
-- Permet à terme d'optimiser finement section et longueur
+### Étape 3 — Jarrets en suite de petites barres — ✅ FAITE
+
+`docs/historique/jarret-discretise-etape3.md`. Résumé :
+- Renfort d'épaule discrétisé en `N_DISC_JARRET = 6` tronçons (backend PyNite
+  seulement — legacy figé = oracle de l'ancien modèle) ; module
+  `business/jarret_discret.py`.
+- Loi d'âme **linéaire `2·h → 1·h`** ; section reconstituée **I à 3 semelles
+  + congés `r`** par intégration du contour, recoupée PropSection v1.0.4
+  (`validation/jarrets/`) à < 0,15 % sur A, < 0,5 % sur Iy.
+- **« Arrondi omis »** du legacy = les congés `r` → réintégrés.
+- **Nœuds du jarret excentrés sur l'axe neutre** (ligne des centres de gravité
+  des sections des tronçons) — `JARRET_EXCENTRE`, défaut activé. Poteau modélisé
+  raccourci ; géométrie dépendante de la traverse → modèle reconstruit par
+  `arba` (caché).
+- Diagnostic a posteriori d'**effort tranchant** non bloquant
+  (`diagnostic_cisaillement`) : < 1 % sur la flèche → Euler-Bernoulli confirmé.
+- **Dense conservé** (LU 47×47 : dense ~1,8× plus rapide que `splu`).
+- Résultat : **cas-02 « bas et large » IPE 600/600 → IPE 600/550** grâce à
+  l'excentrement (−388 kg) ; cas-01/03 sections inchangées, marge de dérive
+  regagnée. Écart CTICM cas-02 réduit à 1 cran ; le résiduel (`tx_mom_pot`
+  100,3 % à IPE 600/500) est porté par le **moment de poteau** → étape 4
+  (vent de rive) / étape 7 (longueur de jarret).
+- **`MOTEUR_CALCUL` défaut = `pynite`** (basculé après validation locale du user).
 
 ### Étape 4 — Audit des charges, en particulier celles de vent
 - Revue exhaustive des configurations de vent (zones, catégories de terrain,

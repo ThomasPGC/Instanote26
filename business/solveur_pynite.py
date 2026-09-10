@@ -35,6 +35,7 @@ Dépendances runtime effectivement chargées : `numpy`, `scipy`, `PrettyTable`.
 n'utilise pas) est **neutralisé** : voir le stub `Pynite.ShearWall` ci-dessous.
 """
 
+import os
 import sys as _sys
 import types as _types
 
@@ -60,7 +61,8 @@ import scipy.linalg as sla
 from Pynite import FEModel3D
 from Pynite import Analysis
 
-from calcport import E, IPE, jarret, def_noeud_barres
+from calcport import E
+import jarret_discret as jd
 
 # Poids propre acier : daN/cm de barre par cm² de section (comme crea_matrice_force).
 DENS_LIN = 7.85e-3
@@ -69,22 +71,46 @@ DENS_LIN = 7.85e-3
 # [Nxi,Vyi,Vzi,Mxi,Myi,Mzi, Nxj,Vyj,Vzj,Mxj,Myj,Mzj], des composantes dans le plan.
 _IDX6 = np.array([0, 1, 5, 6, 7, 11])
 
-# Correspondance clé de taux -> (barre, extrémité) — identique au legacy
-# calculer_et_verifier_resultats (efforts_noeuds = [Ni,Vi,Mi,Nj,Vj,Mj], comp. 2=Mi,
-# 5=Mj, 1=Vi, 4=Vj). "i" = nœud origine de la barre, "j" = nœud fin.
-_TX_MOM = (
-    ("tx_mom_pot_g", 0, "j"), ("tx_mom_renf_g", 1, "i"), ("tx_mom_pied_arba_g", 2, "i"),
-    ("tx_mom_fait", 2, "j"), ("tx_mom_pied_arba_d", 3, "j"), ("tx_mom_renf_d", 4, "j"),
-    ("tx_mom_pot_d", 5, "i"),
-)
-_TX_CIS = (
-    ("tx_cis_pot_g", 0, "i"), ("tx_cis_renf_g", 1, "i"), ("tx_cis_pied_arba_g", 2, "i"),
-    ("tx_cis_pied_arba_d", 3, "j"), ("tx_cis_renf_d", 4, "j"), ("tx_cis_pot_d", 5, "j"),
-)
-
 _FY = 235.0                      # S235 (comme calculer_et_verifier_resultats, fy en dur)
 _FY_LIM = _FY / 10.0
 _FV_LIM = (_FY / 3.0 ** 0.5) / 10.0
+
+# Attributs posés par `SolveurPyNite._build_model` — capturés/restaurés par
+# `_ensure_built` quand la géométrie dépend de la traverse (mode excentré).
+_ETAT_MODELE = ("_topo", "_conn", "_nbar", "_tx_mom", "_tx_cis", "_m", "_nN",
+                "_free", "_rhs", "_rhs_cp_ext", "_rhs_sw", "_fer_ext", "_fer_sw", "_T")
+
+
+def _tx_points(topo):
+    """Correspondance clé de taux -> (barre, extrémité) construite depuis la
+    topologie (`jarret_discret.construire_topologie`). "i" = nœud origine de la
+    barre, "j" = nœud fin. Efforts d'about legacy [Ni,Vi,Mi,Nj,Vj,Mj] :
+    comp. 2 = Mi, 5 = Mj, 1 = Vi, 4 = Vj.
+
+    En `n_disc = 1` reproduit EXACTEMENT les tuples `_TX_MOM`/`_TX_CIS`
+    historiques (poteau=0/dernier, épaule=1/4, sortie de jarret=2/3).
+    """
+    b_trav_g = 1 + topo.n_disc                    # 1re barre de traverse (après poteau + jarret G)
+    b_trav_d = b_trav_g + 1
+    b_last = topo.nbar - 1
+    mom = (
+        ("tx_mom_pot_g", 0, "j"),
+        ("tx_mom_renf_g", topo.bar_epaule_g, "i"),
+        ("tx_mom_pied_arba_g", b_trav_g, "i"),
+        ("tx_mom_fait", b_trav_g, "j"),
+        ("tx_mom_pied_arba_d", b_trav_d, "j"),
+        ("tx_mom_renf_d", topo.bar_epaule_d, "j"),
+        ("tx_mom_pot_d", b_last, "i"),
+    )
+    cis = (
+        ("tx_cis_pot_g", 0, "i"),
+        ("tx_cis_renf_g", topo.bar_epaule_g, "i"),
+        ("tx_cis_pied_arba_g", b_trav_g, "i"),
+        ("tx_cis_pied_arba_d", b_trav_d, "j"),
+        ("tx_cis_renf_d", topo.bar_epaule_d, "j"),
+        ("tx_cis_pot_d", b_last, "j"),
+    )
+    return mom, cis
 
 
 class SolveurPyNite:
@@ -93,23 +119,68 @@ class SolveurPyNite:
     où `ens_resu` a exactement les clés produites par `calcport.calcport`
     (3 déplacements clés + 13 taux `tx_*`), en convention legacy."""
 
-    def __init__(self, geom, charges):
+    def __init__(self, geom, charges, n_disc=1, excentre=None):
         # Chaque cas reconstruit ses efforts d'about avec SON PROPRE `fer`
         # (efforts d'encastrement du cas), et pas avec celui du CP : le bug `Sij`
         # du legacy (cf. CLAUDE.md) n'est PAS reproduit. Le mode « parité stricte »
         # (fer_CP pour tous les cas), scaffold de la bascule, a été retiré à
         # l'étape 4 de fix/legacy-sij une fois le legacy lui-même corrigé.
+        #
+        # `n_disc` : nombre de tronçons par renfort d'épaule.
+        #   1  -> ancien modèle (7 nœuds / 6 barres, section `jarret()`),
+        #         parité stricte avec `_SolveurLegacy` ;
+        #   >1 -> jarret discrétisé à inertie variable (étape 3). Le legacy n'a
+        #         PAS cette variante : parité vérifiée seulement en `n_disc=1`.
+        #
+        # `excentre` (étape 3) : abaisser les nœuds du jarret sur son axe neutre
+        #   (ligne des centres de gravité des sections successives des tronçons) ;
+        #   le nœud d'épaule = sommet du poteau -> poteau modélisé raccourci, et
+        #   jarret non colinéaire à la traverse. La géométrie dépend alors de la
+        #   traverse -> le modèle est (re)construit à chaque changement de `arba`
+        #   (mis en cache, ~10 fois par `optimise_IPE`). Effet secondaire (FER
+        #   des charges réparties) négligeable ; effet principal (bras de levier
+        #   du poteau) voulu. `None` -> lit `JARRET_EXCENTRE` (défaut activé ;
+        #   `JARRET_EXCENTRE=0` -> jarret colinéaire à la traverse).
         self._charges = charges
         self._noms = [c[0] for c in charges]
         self._cp = self._noms[0]                      # le 1er cas est toujours "CP..."
+        self._geom = geom
+        self._n_disc = n_disc
+        if excentre is None:
+            excentre = os.environ.get("JARRET_EXCENTRE", "1") != "0"
+        self._excentre = bool(excentre) and n_disc > 1
+        self._cache_build = {}                        # arba -> état de modèle (mode excentré)
+        self._arba_courant = None
 
-        # --- géométrie : réutilise def_noeud_barres pour les coordonnées et la
-        #     connectivité (sections bidon, on jette les objets Beam)
-        noeuds, barres = def_noeud_barres(geom, "IPE 80", "IPE 80")
-        coords = [(n.X, n.Y) for n in noeuds]
-        self._conn = [(b.Ai.A, b.Aj.A) for b in barres]
+        if not self._excentre:
+            self._build_model(jd.construire_topologie(geom, n_disc))
+
+    def _ensure_built(self, arba):
+        """Mode excentré : (re)construit le modèle pour la traverse `arba`
+        (géométrie du jarret = axe neutre, donc dépendante de la section)."""
+        if not self._excentre or arba == self._arba_courant:
+            return
+        etat = self._cache_build.get(arba)
+        if etat is None:
+            self._build_model(jd.construire_topologie(self._geom, self._n_disc, arba=arba))
+            etat = {a: getattr(self, a) for a in _ETAT_MODELE}
+            self._cache_build[arba] = etat
+        else:
+            for a, v in etat.items():
+                setattr(self, a, v)
+        self._arba_courant = arba
+
+    def _build_model(self, topo):
+        self._topo = topo
+        self._conn = list(topo.conn)
+        self._nbar = topo.nbar
+        self._tx_mom, self._tx_cis = _tx_points(topo)
+        coords = topo.coords
         alpha = [np.arctan2(coords[j][1] - coords[i][1], coords[j][0] - coords[i][0])
                  for (i, j) in self._conn]
+
+        # charges « logiques » (6 segments / 21 slots nodaux) -> modèle discrétisé
+        charges_exp = jd.expanser_charges(self._charges, topo)
 
         # --- modèle PyNite (3D bridé en plan XY : DZ/RX/RY bloqués partout ;
         #     N0/N6 bi-articulés)
@@ -127,8 +198,8 @@ class SolveurPyNite:
         # --- charges élémentaires : 1 « case » PyNite + 1 combo trivial par cas.
         #     CP = charge permanente EXTERNE seule ; le poids propre est traité
         #     par décomposition linéaire (cases unitaires __SWk ci-dessous).
-        for nom, ch_bar, ch_noeud in charges:
-            for k in range(6):
+        for nom, ch_bar, ch_noeud in charges_exp:
+            for k in range(self._nbar):
                 w = ch_bar[k]
                 if nom.startswith("CP"):
                     m.add_member_dist_load(f"M{k}", "FY", w, w, case=nom)
@@ -137,7 +208,7 @@ class SolveurPyNite:
                     m.add_member_dist_load(f"M{k}", "FY", q, q, case=nom)
                 elif nom.startswith("VEN"):
                     m.add_member_dist_load(f"M{k}", "Fy", w, w, case=nom)   # perpendiculaire (local y)
-            for nn in range(7):
+            for nn in range(topo.nN):
                 fx, fy, mz = ch_noeud[3 * nn], ch_noeud[3 * nn + 1], ch_noeud[3 * nn + 2]
                 if fx:
                     m.add_node_load(f"N{nn}", "FX", fx, case=nom)
@@ -147,8 +218,8 @@ class SolveurPyNite:
                     m.add_node_load(f"N{nn}", "MZ", mz, case=nom)
             m.add_load_combo(nom, {nom: 1.0})
 
-        # --- poids propre : 6 cases unitaires (UDL vertical -1 sur une barre chacun)
-        for k in range(6):
+        # --- poids propre : 1 case unitaire par barre (UDL vertical -1)
+        for k in range(self._nbar):
             m.add_member_dist_load(f"M{k}", "FY", -1.0, -1.0, case=f"__SW{k}")
             m.add_load_combo(f"__SW{k}", {f"__SW{k}": 1.0})
 
@@ -159,7 +230,8 @@ class SolveurPyNite:
         self._m = m
         self._nN = len(m.nodes)
 
-        # --- masque des DDL libres (déduit des flags def_support) -> 17
+        # --- masque des DDL libres (déduit des flags def_support)
+        #     n_disc=1 -> 17 ; n_disc=6 -> 47
         free = []
         for idx, nd in enumerate(m.nodes.values()):
             flags = (nd.support_DX, nd.support_DY, nd.support_DZ,
@@ -176,7 +248,7 @@ class SolveurPyNite:
 
         self._rhs = {nom: _rhs(nom) for nom in self._noms if not nom.startswith("CP")}
         self._rhs_cp_ext = _rhs(self._cp)
-        self._rhs_sw = [_rhs(f"__SW{k}") for k in range(6)]
+        self._rhs_sw = [_rhs(f"__SW{k}") for k in range(self._nbar)]
 
         # FER local (12 composantes) par barre, par cas élémentaire :
         #  - `_fer_ext[nom]`  : efforts d'encastrement des charges EXTERNES du cas
@@ -184,75 +256,108 @@ class SolveurPyNite:
         #    ses efforts d'about (le bug `Sij` du legacy n'est pas reproduit).
         #  - `_fer_sw`        : idem pour un poids propre unitaire par barre
         #    (le cas CP y ajoute Σ A_k·dens·_fer_sw[k]).
-        self._fer_ext = {nom: [np.asarray(m.members[f"M{k}"].fer(nom)).reshape(-1) for k in range(6)]
+        self._fer_ext = {nom: [np.asarray(m.members[f"M{k}"].fer(nom)).reshape(-1)
+                               for k in range(self._nbar)]
                          for nom in self._noms}
-        self._fer_sw = [np.asarray(m.members[f"M{k}"].fer(f"__SW{k}")).reshape(-1) for k in range(6)]
-        self._T = [np.asarray(m.members[f"M{k}"].T()) for k in range(6)]
+        self._fer_sw = [np.asarray(m.members[f"M{k}"].fer(f"__SW{k}")).reshape(-1)
+                        for k in range(self._nbar)]
+        self._T = [np.asarray(m.members[f"M{k}"].T()) for k in range(self._nbar)]
 
     # ------------------------------------------------------------------
     def _props(self, poteau, arba):
         """(A, Iy_fort, Wpl.y, Avz) par barre — MÊME source que change_sections :
-        poteau IPE pour B0/B5, traverse IPE pour B2/B3, jarret(arba) pour B1/B4."""
-        dp, da, dj = IPE.dict_carac(poteau), IPE.dict_carac(arba), jarret(arba)
-        return [(r["A"], r["Iy"], r["Wpl.y"], r["Avz"]) for r in (dp, dj, da, da, dj, dp)]
+        poteau IPE pour les poteaux, traverse IPE pour les traverses,
+        `jarret_discret.sections_jarret(arba, n_disc)` tronçon par tronçon
+        (= `jarret(arba)` quand n_disc=1)."""
+        return [(r["A"], r["Iy"], r["Wpl.y"], r["Avz"])
+                for r in jd.sections_par_barre(self._topo, poteau, arba)]
 
-    def resoudre(self, poteau, arba):
+    def _solve_all(self, poteau, arba):
+        """Cœur commun : résout tous les cas élémentaires pour (poteau, arba) et
+        renvoie `(props, longueurs, {nom: [eff6 par barre]}, {nom: df})`, `eff6`
+        = [Ni,Vi,Mi,Nj,Vj,Mj] en convention legacy (efforts d'about), `df` =
+        vecteur déplacement complet (6 DDL/nœud, convention PyNite = physique)."""
+        self._ensure_built(arba)             # no-op sauf mode excentré (géométrie ~ arba)
         m = self._m
+        nbar = self._nbar
         props = self._props(poteau, arba)
         aire = [p[0] for p in props]
-        wpl = [p[2] for p in props]
-        avz = [p[3] for p in props]
 
-        # mutation des 6 sections en place -> m.Ke() et member.ke() la reflètent
         for k, (a, iy, _w, _v) in enumerate(props):
             sec = m.sections[f"S{k}"]
             sec.A = a
-            sec.Iz = iy                     # PyNite : flexion plan XY = autour de Z
-        ke = [np.asarray(m.members[f"M{k}"].ke()) for k in range(6)]
+            sec.Iz = iy
+        ke = [np.asarray(m.members[f"M{k}"].ke()) for k in range(nbar)]
 
-        # assemblage (PyNite) + partition + factorisation (ici)
         K = np.asarray(m.Ke(self._cp, False, False, False))
         lu = sla.lu_factor(K[np.ix_(self._free, self._free)], check_finite=False)
 
-        # RHS du cas CP = charge externe + poids propre (Σ A_k · dens · SW_unit_k)
         rhs_cp = self._rhs_cp_ext.copy()
-        for k in range(6):
+        for k in range(nbar):
             rhs_cp = rhs_cp + (aire[k] * DENS_LIN) * self._rhs_sw[k]
-
-        # FER local du cas CP (externe + poids propre).
         fer_cp = [self._fer_ext[self._cp][k] + (aire[k] * DENS_LIN) * self._fer_sw[k]
-                  for k in range(6)]
+                  for k in range(nbar)]
 
-        resultats = []
+        eff_par_cas = {}
+        df_par_cas = {}
         for nom in self._noms:
             rhs = rhs_cp if nom == self._cp else self._rhs[nom]
             d1 = sla.lu_solve(lu, rhs, check_finite=False)
             df = np.zeros(self._nN * 6)
             df[self._free] = d1
-
-            # FER propre au cas courant (le CP porte en plus son poids propre).
             fer = fer_cp if nom == self._cp else self._fer_ext[nom]
-
-            # efforts d'about par barre, convention legacy [Ni,Vi,Mi,Nj,Vj,Mj]
-            #   floc = ke · (T · d_barre) + fer
-            #   [Ni,Vi,Mi,Nj,Vj,Mj]_legacy = -floc[[0,1,5,6,7,11]]     (checkpoint D-ter)
             eff = []
-            for k in range(6):
+            for k in range(nbar):
                 i, j = self._conn[k]
                 dm = np.concatenate([df[i * 6:i * 6 + 6], df[j * 6:j * 6 + 6]])
                 floc = ke[k] @ (self._T[k] @ dm) + fer[k]
-                eff.append(-floc[_IDX6])          # [Ni,Vi,Mi,Nj,Vj,Mj]
+                eff.append(-floc[_IDX6])
+            eff_par_cas[nom] = eff
+            df_par_cas[nom] = df
 
+        longueurs = [float(np.hypot(self._topo.coords[j][0] - self._topo.coords[i][0],
+                                    self._topo.coords[j][1] - self._topo.coords[i][1]))
+                     for (i, j) in self._conn]
+        return props, longueurs, eff_par_cas, df_par_cas
+
+    def details_efforts(self, poteau, arba):
+        """Efforts d'about bruts + géométrie/section par barre, pour le
+        diagnostic a posteriori d'effort tranchant (`jarret_discret.
+        diagnostic_cisaillement`). Ne participe PAS au dimensionnement."""
+        props, longueurs, eff_par_cas, _df = self._solve_all(poteau, arba)
+        t = self._topo
+        return {
+            "noms": list(self._noms),
+            "E": E, "G": E / 2.6,
+            "roles": list(t.roles),
+            "bars_jarret": list(t.bars_jarret_g) + list(t.bars_jarret_d),
+            "longueurs": longueurs,
+            "props": props,                       # (A, Iy, Wpl.y, Avz) par barre
+            "eff": eff_par_cas,                   # {nom: [ [Ni,Vi,Mi,Nj,Vj,Mj], ... ]}
+        }
+
+    def resoudre(self, poteau, arba):
+        """[(nom_cas, ens_resu), ...] — même sortie que `_SolveurLegacy`
+        (3 déplacements clés + 13 taux `tx_*`, convention legacy)."""
+        props, _long, eff_par_cas, df_par_cas = self._solve_all(poteau, arba)
+        wpl = [p[2] for p in props]
+        avz = [p[3] for p in props]
+        t = self._topo
+
+        resultats = []
+        for nom in self._noms:
+            eff = eff_par_cas[nom]
+            df = df_par_cas[nom]
             ens = {
                 # déplacements en convention legacy (opposé du physique, cf. règle 1)
-                "depl_t_p_g": -df[1 * 6 + 0],     # N1 DX
-                "depl_t_p_d": -df[5 * 6 + 0],     # N5 DX
-                "fleche_fait": -df[3 * 6 + 1],    # N3 DY
+                "depl_t_p_g": -df[t.node_tete_g * 6 + 0],
+                "depl_t_p_d": -df[t.node_tete_d * 6 + 0],
+                "fleche_fait": -df[t.node_faitage * 6 + 1],
             }
-            for cle, b, bout in _TX_MOM:
+            for cle, b, bout in self._tx_mom:
                 mom = eff[b][2] if bout == "i" else eff[b][5]
                 ens[cle] = mom / (wpl[b] * _FY_LIM) / 100.0
-            for cle, b, bout in _TX_CIS:
+            for cle, b, bout in self._tx_cis:
                 cis = eff[b][1] if bout == "i" else eff[b][4]
                 ens[cle] = cis / (avz[b] * _FV_LIM) / 100.0
             resultats.append((nom, ens))

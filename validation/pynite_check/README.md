@@ -1,9 +1,12 @@
-# validation/pynite_check — parité legacy ↔ PyNite (roadmap moteur, étape 1)
+# validation/pynite_check — moteur de calcul : parité & étapes (roadmap moteur)
 
-Scripts de vérification de la bascule du solveur structurel de
-`business/calcport.py` vers **PyNiteFEA** (branche `refactor/pynite`,
-option A « PyNite assembleur » — voir `CLAUDE.md`, section
-« Roadmap moteur de calcul »).
+Scripts de vérification du solveur structurel de `business/calcport.py` :
+- **étape 1** (`check_1*`) : bascule vers **PyNiteFEA**, option A « PyNite
+  assembleur » — parité legacy ↔ PyNite de l'ancien modèle ;
+- **étape 3** (`check_3*`) : renfort d'épaule discrétisé + excentré
+  (`business/jarret_discret.py`).
+
+Voir `docs/moteur-de-calcul.md` et `docs/historique/`.
 
 Chaque script est **autonome et figé** : il est la trace de ce qui a
 réellement été comparé à une sous-étape donnée. On ne factorise pas de
@@ -21,9 +24,20 @@ ce qui a été testé, quand.
 | `check_1d_familles_charges.py` | 1.d | Efforts d'about des 6 barres identiques legacy vs PyNite sur les 22 cas élémentaires des 3 jeux — familles CP / NEI / VEN + charges nodales. |
 | `check_1e_taux.py` | 1.e | Les 13 `tx_*` recalculés depuis les efforts PyNite (formule legacy exacte), comparés **au signe près** cas par cas ; détail des moments critiques du renfort d'épaule + gouvernant post-`COMBI_EFF`. |
 | `check_1f_optimise.py` | 1.f | Boucle `optimise_IPE` complète (monkeypatch d'un `resoudre_cas` PyNite) : sections retenues identiques sur 3 jeux + 12 cas aléatoires reproductibles. |
-| `check_1g_non_regression.py` | G | `charge_et_sections()` dict identique `MOTEUR_CALCUL=legacy` vs `pynite` (2 sous-processus), 32 cas dont `PasDeSolutionIPE` et zonage introuvable. Bug `Sij` corrigé des deux côtés (fix/legacy-sij). |
-| `compare_3modes_ctcim.py` | étape 2 CTICM | Rejoue cas-01/02/03 avec `legacy` et `pynite` : poteau/traverse, `taux_trav`, `taux_max` brut, flèche, masse. Pas de verdict. Le comparatif historique à 3 modes (avec « pynite parité stricte », retiré à l'étape 4) est figé dans `validation/COMPARAISON_CTICM.md`. |
+| `check_1g_non_regression.py` | G | `charge_et_sections()` dict identique `MOTEUR_CALCUL=legacy` vs `pynite` (2 sous-processus), 32 cas dont `PasDeSolutionIPE` et zonage introuvable. Bug `Sij` corrigé des deux côtés (fix/legacy-sij). **Épinglé à `N_DISC_JARRET=1`** depuis l'étape 3 (parité = ancien modèle uniquement). |
+| `compare_3modes_ctcim.py` | étapes 2–3 | Rejoue cas-01/02/03 avec `legacy`, `pynite ancien` (N_DISC=1) et `pynite discrétisé` (N_DISC=6) : poteau/traverse, `taux_trav`, `taux_max` brut, flèche, masse. Pas de verdict. |
 | `check_deps_runtime.py` | garde-fou deps | Après un `charge_et_sections()` en `MOTEUR_CALCUL=pynite` : `matplotlib` **pas** chargé (stub `Pynite.ShearWall`), `scipy` chargé. À rejouer à toute montée de version de PyNiteFEA (cf. CLAUDE.md, « Check-list montée de version PyNite »). |
+
+### Étape 3 — jarret discrétisé (`business/jarret_discret.py`)
+
+| Fichier | Sous-étape | Ce qui est vérifié |
+|---|---|---|
+| `check_3a_section_jarret.py` | 3.a | `caracs_section_jarret` (I à 3 semelles + congés `r`, intégration du contour) recoupée avec **PropSection v1.0.4** (`validation/jarrets/*.png`) sur IPE 160/300/450, hr = 150 % et ~200 % ; garde-fou intégrateur (contour 2 semelles == IPE catalogue) ; monotonie de la loi dégressive ; `sections_jarret(arba, 1)` == `[jarret(arba)]`. |
+| `check_3b_topologie.py` | 3.b | `construire_topologie` / `expanser_charges` / `sections_par_barre` : `n_disc=1` reproduit `def_noeud_barres` ; `n_disc=6` (17 nœuds / 16 barres, N0..N6 préservés, tronçons colinéaires, épaule ancrée) ; identité de l'expansion de charges en `n_disc=1` ; ordre des nœuds PyNite. |
+| `check_3c_non_regression_ancien_modele.py` | 3.c | `SolveurPyNite(n_disc=1)` == `_SolveurLegacy` clé par clé (< 1e-6 %) sur 3 jeux + 15 géométries aléatoires. **Gate « legacy = oracle de l'ancien modèle ».** |
+| `check_3d_discretise.py` | 3.d | Modèle discrétisé **+ excentré** (`N_DISC_JARRET=6`, `JARRET_EXCENTRE` défaut) sur les 3 jeux : non-régression vs référence figée + garde de sécurité (sections jamais **sous le CTICM**, `taux_max` ne s'effondre pas > 8 pts sous l'ancien modèle) + suivi (informatif). |
+| `check_3e_profilage.py` | 3.e | Profilage : `resoudre` n=1 vs n=6 ; dense vs creux sur la matrice réduite (47×47). Pas de verdict — justifie de rester en dense. |
+| `check_3f_excentre.py` | 3.f | Comparaison jarret **colinéaire** (`JARRET_EXCENTRE=0`) vs **excentré sur l'axe neutre** (défaut) sur les 3 jeux + géométries aléatoires. Pas de verdict — outil de décision. |
 
 ## Rejouer
 
@@ -37,9 +51,11 @@ for s in 1a_sans_jarret 1b_renfort_epaule 1b_profilage 1c_cl_et_vent \
 done
 ```
 
-`check_1a`..`check_1f` acceptent aussi `MOTEUR_CALCUL=pynite` (ils
-appellent `charge_et_sections` en interne). `check_1g` pilote les deux
-backends lui-même.
+`check_1a`..`check_1f` sont **épinglés en tête** à `MOTEUR_CALCUL=legacy` +
+`N_DISC_JARRET=1` (`_os.environ.setdefault`) : ils testent la parité de
+l'**ancien modèle** de l'étape 1, indépendamment du défaut prod (désormais
+`pynite` / `N_DISC_JARRET=6` / excentré). `check_1g` pilote les deux backends
+lui-même (sous-processus, `N_DISC_JARRET=1`).
 
 Tous les scripts sauf `check_1b_profilage.py` affichent un verdict et
 sortent avec le code `0` (OK) ou `1` (écart au-delà de la tolérance).

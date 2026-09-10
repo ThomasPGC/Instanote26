@@ -37,14 +37,15 @@ IPE = Tuple_tous_ipe()
 # Désactivé par défaut : AUDIT_MODE=1 dans l'environnement pour l'activer.
 AUDIT_MODE = os.environ.get("AUDIT_MODE") == "1"
 
-# Backend de résolution structurelle utilisé par optimise_IPE (voir CLAUDE.md,
-# "Roadmap moteur de calcul", étape 1) :
-#   "legacy" (défaut) = solveur maison (méthode des déplacements) ;
-#   "pynite"          = bascule PyNiteFEA (business/solveur_pynite.py).
-# Les deux backends donnent des résultats identiques (bug Sij corrigé des deux
-# côtés depuis la branche fix/legacy-sij). Sur Railway : MOTEUR_CALCUL=pynite.
-# "pynite_corrige" est accepté comme alias historique de "pynite".
-MOTEUR_CALCUL = os.environ.get("MOTEUR_CALCUL", "legacy")
+# Backend de résolution structurelle utilisé par optimise_IPE (voir
+# docs/moteur-de-calcul.md, docs/historique/jarret-discretise-etape3.md) :
+#   "pynite" (DÉFAUT) = PyNiteFEA (business/solveur_pynite.py), renfort d'épaule
+#                       discrétisé + excentré sur l'axe neutre (étape 3) ;
+#   "legacy"          = solveur maison (méthode des déplacements), renfort
+#                       d'épaule prismatique 1,66·h — oracle de l'ancien modèle.
+# Résultats identiques SEULEMENT en N_DISC_JARRET=1 (harnais de parité
+# check_1g / check_3c). "pynite_corrige" = alias historique de "pynite".
+MOTEUR_CALCUL = os.environ.get("MOTEUR_CALCUL", "pynite")
 
 
 GEOMTEST = {"hpot": 400, "portee": 1600, "pente": 0.25, "longueur": 2400,
@@ -514,13 +515,19 @@ def _make_solveur(geom, charges):
     """Fabrique le backend de résolution selon MOTEUR_CALCUL.
 
     - "legacy" (défaut) : solveur maison (méthode des déplacements), bug Sij
-      corrigé (cf. _SolveurLegacy.resoudre).
-    - "pynite" (ou l'alias historique "pynite_corrige") : bascule PyNiteFEA.
-    Les deux donnent des résultats identiques.
+      corrigé (cf. _SolveurLegacy.resoudre). Renfort d'épaule = 1 barre
+      prismatique `1,66·h` (fonction `jarret()`).
+    - "pynite" (ou l'alias historique "pynite_corrige") : backend PyNiteFEA.
+      Renfort d'épaule **discrétisé** en `jarret_discret.N_DISC_JARRET` tronçons
+      à inertie variable (étape 3 de la roadmap moteur). Le legacy n'a PAS cette
+      variante : il reste l'oracle de l'ancien modèle. Parité legacy ↔ pynite
+      vérifiée seulement en `N_DISC_JARRET=1` (cf. validation/pynite_check/
+      check_3c...).
     """
     if MOTEUR_CALCUL in ("pynite", "pynite_corrige"):
         from solveur_pynite import SolveurPyNite   # import tardif : évite le cycle
-        return SolveurPyNite(geom, charges)
+        from jarret_discret import N_DISC_JARRET
+        return SolveurPyNite(geom, charges, n_disc=N_DISC_JARRET)
     return _SolveurLegacy(geom, charges)
 
 
@@ -765,7 +772,20 @@ def charge_et_sections(geom=GEOMTEST, localisation=LOCALITEST, cp=CPTEST):
         return {"poteau": "problème de localisation"}, e
 
     try:
-        return optimise_IPE(geom, charges_calc), "OK"
+        res = optimise_IPE(geom, charges_calc)
+        # Diagnostic a posteriori de l'effort tranchant (déformation négligée
+        # dans la raideur — Euler-Bernoulli). NON bloquant : ne change aucune
+        # section, n'interrompt jamais la réponse. Seulement en mode pynite
+        # (modèle à jarret discrétisé).
+        if MOTEUR_CALCUL in ("pynite", "pynite_corrige"):
+            try:
+                from jarret_discret import diagnostic_cisaillement, N_DISC_JARRET
+                if N_DISC_JARRET > 1:
+                    res.update(diagnostic_cisaillement(
+                        geom, charges_calc, res["poteau"], res["traverse"]))
+            except Exception:
+                pass
+        return res, "OK"
     except PasDeSolutionIPE:
         return {"poteau": "Aucun profil IPE disponible pour cette configuration "
                            "— nous contacter pour une étude spécifique"}, None

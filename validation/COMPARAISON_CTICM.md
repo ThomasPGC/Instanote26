@@ -19,20 +19,37 @@ synthèses PORTAL+) :
 | cas-02-bas-large | IPE 600 | **IPE 500** | poteaux identiques ; **arbalétriers 2 crans sous Instanote** (IPE 500 vs IPE 600) |
 
 → Sur cas-02, CTICM dimensionne l'arbalétrier à IPE 500 là où Instanote exige
-IPE 600 : **l'influence du jarret devient prépondérante**. C'est le signal le
-plus net pour l'**étape 3** de la roadmap moteur (jarret discrétisé en barres
-à inertie variable au lieu de la barre prismatique `1,66·h`).
+IPE 600.
+
+**MISE À JOUR — étape 3 faite (jarret discrétisé + excentré) :**
+- Jarret discrétisé **colinéaire** (6 tronçons, âme `2h→1h`, section 3 semelles
+  + `r` recoupée PropSection) : **aucune section ne change**, `taux_max`
+  −0,07 / −0,66 / −0,07 pt.
+- Jarret **excentré sur l'axe neutre** (nœuds sur la ligne des centres de
+  gravité, poteau modélisé raccourci — défaut depuis l'étape 3) : **cas-02
+  IPE 600/600 → IPE 600/550** (−388 kg, **1 cran** de l'IPE 500 CTICM au lieu
+  de 2) ; cas-01/03 sections inchangées, dérive améliorée.
+- **Résiduel cas-02** : le point gouvernant reste le **moment de poteau**. À
+  sections forcées IPE 600/500 : `tx_mom_pot` 103,1 % (colinéaire) → **100,3 %**
+  (excentré) — encore rejeté d'un cheveu. L'écart n'est **pas** porté par le
+  renfort d'épaule → zones de vent de rive F/G/J (**étape 4**), liaison
+  poteau/traverse (**étape 7**). Détail :
+  `docs/historique/jarret-discretise-etape3.md`.
 
 ## 1. Les 3 modes Instanote
 
 `compare_3modes_ctcim.py` — `taux_max` **brut** (avant `round(., 1)` qui donne
 le `taux_trav` affiché) :
 
-| cas | legacy (bug `Sij`) | pynite parité stricte | **corrigé** (legacy fix + pynite_corrige) |
-|---|---|---|---|
-| cas-01-compact  | 37,98 % | 37,98 % | **37,84 %** |
-| cas-02-bas-large | 99,33 % | 99,33 % | **98,84 %** |
-| cas-03-haut-fin | 56,07 % | 56,07 % | **54,92 %** |
+| cas | legacy (bug `Sij`) | pynite parité stricte | **corrigé** (legacy fix + pynite_corrige) | **jarret discrétisé colinéaire** | **discrétisé + excentré** (défaut étape 3) |
+|---|---|---|---|---|---|
+| cas-01-compact  | 37,98 % | 37,98 % | **37,84 %** | 37,77 % | 37,08 % |
+| cas-02-bas-large | 99,33 % | 99,33 % | **98,84 %** | 98,18 % | 98,26 % (IPE 600/**550**) |
+| cas-03-haut-fin | 56,07 % | 56,07 % | **54,92 %** | 54,85 % | 54,02 % |
+
+Colonnes étape 3 : rejeu `compare_3modes_ctcim.py` / `check_3f_excentre.py`.
+Colinéaire : sections inchangées (IPE 160/140 · 600/600 · 600/500).
+Excentré : cas-02 → IPE 600/**550** ; cas-01/03 inchangés, dérive −0,8 à −3 mm.
 
 Sections retenues **identiques dans les 3 modes** : IPE 160/140 · IPE 600/600 ·
 IPE 600/500. `fleche` et `derive` identiques dans les 3 modes (l'ELS n'est pas
