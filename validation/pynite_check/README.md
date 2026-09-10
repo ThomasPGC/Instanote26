@@ -1,9 +1,12 @@
-# validation/pynite_check — parité legacy ↔ PyNite (roadmap moteur, étape 1)
+# validation/pynite_check — moteur de calcul : parité & étapes (roadmap moteur)
 
-Scripts de vérification de la bascule du solveur structurel de
-`business/calcport.py` vers **PyNiteFEA** (branche `refactor/pynite`,
-option A « PyNite assembleur » — voir `CLAUDE.md`, section
-« Roadmap moteur de calcul »).
+Scripts de vérification du solveur structurel de `business/calcport.py` :
+- **étape 1** (`check_1*`) : bascule vers **PyNiteFEA**, option A « PyNite
+  assembleur » — parité legacy ↔ PyNite de l'ancien modèle ;
+- **étape 3** (`check_3*`) : renfort d'épaule discrétisé + excentré
+  (`business/jarret_discret.py`).
+
+Voir `docs/moteur-de-calcul.md` et `docs/historique/`.
 
 Chaque script est **autonome et figé** : il est la trace de ce qui a
 réellement été comparé à une sous-étape donnée. On ne factorise pas de
@@ -48,9 +51,11 @@ for s in 1a_sans_jarret 1b_renfort_epaule 1b_profilage 1c_cl_et_vent \
 done
 ```
 
-`check_1a`..`check_1f` acceptent aussi `MOTEUR_CALCUL=pynite` (ils
-appellent `charge_et_sections` en interne). `check_1g` pilote les deux
-backends lui-même.
+`check_1a`..`check_1f` sont **épinglés en tête** à `MOTEUR_CALCUL=legacy` +
+`N_DISC_JARRET=1` (`_os.environ.setdefault`) : ils testent la parité de
+l'**ancien modèle** de l'étape 1, indépendamment du défaut prod (désormais
+`pynite` / `N_DISC_JARRET=6` / excentré). `check_1g` pilote les deux backends
+lui-même (sous-processus, `N_DISC_JARRET=1`).
 
 Tous les scripts sauf `check_1b_profilage.py` affichent un verdict et
 sortent avec le code `0` (OK) ou `1` (écart au-delà de la tolérance).

@@ -115,23 +115,21 @@ résultats (écran + PDF), acceptation à l'inscription.
   modèle (barre unique), utilisé par les harnais de parité.
 - `JARRET_EXCENTRE` : `0` = jarret colinéaire à la traverse ; sinon (défaut) =
   nœuds sur l'axe neutre (si `N_DISC_JARRET>1`).
-- **Résultats identiques seulement en `N_DISC_JARRET=1`.** Défaut code =
-  `legacy` (bascule vers `pynite` = commit séparé au push, après validation
-  manuelle) ; Railway = `pynite`.
+- **Résultats identiques seulement en `N_DISC_JARRET=1`.** **Défaut code =
+  `pynite`** (basculé à la fin de l'étape 3). `MOTEUR_CALCUL=legacy` force
+  l'ancien modèle (oracle).
 
 ### État d'avancement
 - **Étape 1 (bascule PyNite) : faite et validée** — journal
   `docs/historique/bascule-pynite-etape1.md`.
 - **Étape 2 (validation croisée CTICM) : validée** — `validation/COMPARAISON_CTICM.md`.
-- **Étape 3 (jarret discrétisé + excentré) : faite** — branche
-  `feat/jarret-discretise-etape3`. Section 3 semelles + `r` recoupée PropSection ;
-  nœuds du jarret sur l'axe neutre ; legacy figé = oracle ; diagnostic
-  cisaillement non bloquant. **cas-02 « bas et large » IPE 600/600 → IPE 600/550**
-  (−388 kg, 1 cran du CTICM ; résiduel = moment de poteau → étape 4) ;
-  cas-01/03 inchangés. Journal :
-  `docs/historique/jarret-discretise-etape3.md`. **Reste :** validation manuelle
-  user en local (`MOTEUR_CALCUL=pynite` dans `.env`), puis push + commit de
-  bascule `MOTEUR_CALCUL` défaut `legacy → pynite`.
+- **Étape 3 (jarret discrétisé + excentré) : faite, validée, `MOTEUR_CALCUL`
+  défaut basculé sur `pynite`** — branche `feat/jarret-discretise-etape3`.
+  Section 3 semelles + `r` recoupée PropSection ; nœuds du jarret sur l'axe
+  neutre (poteau raccourci) ; legacy figé = oracle ; diagnostic cisaillement
+  non bloquant. **cas-02 « bas et large » IPE 600/600 → IPE 600/550** (−388 kg,
+  1 cran du CTICM ; résiduel = moment de poteau → étape 4) ; cas-01/03
+  inchangés. Journal : `docs/historique/jarret-discretise-etape3.md`.
 - **Étape 4 (audit des charges de vent) : prochaine.**
 - Scripts de parité : `validation/pynite_check/` (`check_1*` + `check_3*` — à
   relancer à toute montée de version PyNite ou refactor moteur ; PyNite **piqué
@@ -148,7 +146,9 @@ résultats (écran + PDF), acceptation à l'inscription.
 - Builder : **Railpack** (`railpack.json` à la racine — paquets apt WeasyPrint).
 - Variables d'env configurées : `SQLITE_DB_PATH` (= `/data/instanote26.db`,
   Volume), `INSTANOTE26_AUTH_SECRET`, `BREVO_API_KEY`, `EMAIL_FROM`,
-  `APP_BASE_URL`. **`MOTEUR_CALCUL=pynite` à poser** pour activer PyNite en prod.
+  `APP_BASE_URL`. Le moteur `pynite` est **le défaut du code** depuis l'étape 3
+  — plus besoin de poser `MOTEUR_CALCUL` sur Railway (le laisser `pynite` s'il
+  y est déjà ne change rien). `N_DISC_JARRET` / `JARRET_EXCENTRE` : défauts OK.
 - Après tout déploiement : tester `GET /test-pdf`, un export PDF réel, `/compte`.
 
 ## En cours / prochaine session
@@ -176,11 +176,12 @@ résultats (écran + PDF), acceptation à l'inscription.
 - **PyNite piqué `==3.0.0`** : toute montée de version = projet à part entière,
   check-list obligatoire dans `docs/moteur-de-calcul.md`.
 - **Parité legacy ↔ pynite = ancien modèle uniquement.** Depuis l'étape 3, le
-  backend `pynite` discrétise le renfort d'épaule (`N_DISC_JARRET=6` par
-  défaut) et **n'est plus identique au legacy**. `check_1g` est épinglé à
-  `N_DISC_JARRET=1` ; `check_3c` teste la parité de l'ancien modèle ;
-  `check_3d` valide le modèle discrétisé. Ne pas « réparer » une divergence
-  `check_1g` en `N_DISC_JARRET=6` — c'est attendu.
+  backend `pynite` (défaut) discrétise + excentre le renfort d'épaule et
+  **n'est plus identique au legacy**. Les harnais `check_1*` sont **épinglés**
+  en tête à `MOTEUR_CALCUL=legacy` + `N_DISC_JARRET=1` (ancien modèle) ;
+  `check_3c` teste la parité de l'ancien modèle ; `check_3d` valide le modèle
+  discrétisé + excentré. Ne pas « réparer » une divergence en `pynite`/`n=6` —
+  c'est attendu.
 - **fastapi-users 15.0.5** : `CookieTransport.get_login_response()` construit
   lui-même sa `Response` (API différente des versions antérieures).
 

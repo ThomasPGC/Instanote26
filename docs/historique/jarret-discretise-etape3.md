@@ -252,13 +252,15 @@ des barres dont la section ne change pas d'une itération à l'autre.
 | `check_3f_excentre.py` | comparaison colinéaire vs excentré (3 jeux + aléatoires) | (pas de verdict) |
 | `check_1a…1g` + `check_deps_runtime` | rejoués — inchangés. `check_1g` **épinglé à `N_DISC_JARRET=1`** (parité = ancien modèle) | **0** |
 
-## 9. Reste à faire pour clôturer l'étape
+## 9. Clôture de l'étape
 
 1. Doc : `docs/moteur-de-calcul.md`, `docs/reference-legacy-vs-pynite.md`,
-   `CLAUDE.md`, `validation/COMPARAISON_CTICM.md` — **fait**.
-2. **Validation manuelle du user en local** (`MOTEUR_CALCUL=pynite` dans `.env`) :
-   calcul réel, encart cisaillement, export PDF, `/compte`.
-3. Si OK → push. **Commit de bascille séparé** : `MOTEUR_CALCUL` défaut
-   `legacy → pynite` dans `calcport.py` + `CLAUDE.md`.
-4. Railway : poser `MOTEUR_CALCUL=pynite` s'il n'y est pas déjà ; `N_DISC_JARRET`
-   et `JARRET_EXCENTRE` laissés au défaut (6 / activé).
+   `CLAUDE.md`, `validation/COMPARAISON_CTICM.md`, README — **fait**.
+2. Validation manuelle du user en local (`MOTEUR_CALCUL=pynite` dans `.env`) —
+   **faite** (« c'est bon pour les vérifs en local »).
+3. **`MOTEUR_CALCUL` défaut `legacy → pynite`** dans `calcport.py` — **fait**.
+   Les harnais `check_1*` (étape 1, ancien modèle) sont désormais épinglés en
+   tête à `MOTEUR_CALCUL=legacy` + `N_DISC_JARRET=1` (`_os.environ.setdefault`).
+4. Railway : le moteur `pynite` est le défaut du code → `MOTEUR_CALCUL` n'a plus
+   besoin d'être posé ; `N_DISC_JARRET` / `JARRET_EXCENTRE` au défaut (6 / activé).
+   Après déploiement : `GET /test-pdf`, un export PDF réel, `/compte`.

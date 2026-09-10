@@ -37,14 +37,15 @@ IPE = Tuple_tous_ipe()
 # Désactivé par défaut : AUDIT_MODE=1 dans l'environnement pour l'activer.
 AUDIT_MODE = os.environ.get("AUDIT_MODE") == "1"
 
-# Backend de résolution structurelle utilisé par optimise_IPE (voir CLAUDE.md,
-# "Roadmap moteur de calcul", étape 1) :
-#   "legacy" (défaut) = solveur maison (méthode des déplacements) ;
-#   "pynite"          = bascule PyNiteFEA (business/solveur_pynite.py).
-# Les deux backends donnent des résultats identiques (bug Sij corrigé des deux
-# côtés depuis la branche fix/legacy-sij). Sur Railway : MOTEUR_CALCUL=pynite.
-# "pynite_corrige" est accepté comme alias historique de "pynite".
-MOTEUR_CALCUL = os.environ.get("MOTEUR_CALCUL", "legacy")
+# Backend de résolution structurelle utilisé par optimise_IPE (voir
+# docs/moteur-de-calcul.md, docs/historique/jarret-discretise-etape3.md) :
+#   "pynite" (DÉFAUT) = PyNiteFEA (business/solveur_pynite.py), renfort d'épaule
+#                       discrétisé + excentré sur l'axe neutre (étape 3) ;
+#   "legacy"          = solveur maison (méthode des déplacements), renfort
+#                       d'épaule prismatique 1,66·h — oracle de l'ancien modèle.
+# Résultats identiques SEULEMENT en N_DISC_JARRET=1 (harnais de parité
+# check_1g / check_3c). "pynite_corrige" = alias historique de "pynite".
+MOTEUR_CALCUL = os.environ.get("MOTEUR_CALCUL", "pynite")
 
 
 GEOMTEST = {"hpot": 400, "portee": 1600, "pente": 0.25, "longueur": 2400,

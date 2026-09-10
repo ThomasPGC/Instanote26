@@ -80,17 +80,16 @@ et **acceptation à l'inscription**.
   **cas-02 « bas et large » IPE 600/600 → IPE 600/550** (−388 kg, 1 cran de
   l'IPE 500 de CTICM ; le résiduel est porté par le moment de poteau → étape 4) ;
   cas-01/03 sections inchangées, marge de dérive regagnée. Détail :
-  `docs/historique/jarret-discretise-etape3.md`. **Bascule `MOTEUR_CALCUL` défaut
-  `legacy → pynite` : commit séparé au moment du push, après validation manuelle
-  du user.**
+  `docs/historique/jarret-discretise-etape3.md`. **`MOTEUR_CALCUL` défaut basculé
+  sur `pynite`** (validation locale du user faite).
 - **Étape 4 — audit des charges (vent) : prochaine.**
 
 Variables d'env :
-- **`MOTEUR_CALCUL`** : absente/`legacy` → solveur maison, renfort d'épaule
-  `1,66·h` prismatique ; `pynite` (alias `pynite_corrige`) →
-  `business/solveur_pynite.py`, renfort d'épaule **discrétisé + excentré**.
-  **Résultats identiques seulement en `N_DISC_JARRET=1`.** Défaut code
-  (aujourd'hui) : `legacy`. Railway : `MOTEUR_CALCUL=pynite`.
+- **`MOTEUR_CALCUL`** : `pynite` (**défaut depuis l'étape 3**) →
+  `business/solveur_pynite.py`, renfort d'épaule **discrétisé + excentré** ;
+  `legacy` → solveur maison, renfort d'épaule `1,66·h` prismatique (oracle de
+  l'ancien modèle). Alias `pynite_corrige`. **Résultats identiques seulement en
+  `N_DISC_JARRET=1`.**
 - **`N_DISC_JARRET`** : nombre de tronçons par renfort d'épaule (défaut **6**).
   `1` = ancien modèle (barre unique `jarret()`), utilisé par les harnais de
   parité (`check_1g`, `check_3c`).
@@ -175,8 +174,7 @@ chaque géométrie future.
   regagnée. Écart CTICM cas-02 réduit à 1 cran ; le résiduel (`tx_mom_pot`
   100,3 % à IPE 600/500) est porté par le **moment de poteau** → étape 4
   (vent de rive) / étape 7 (longueur de jarret).
-- Reste : validation manuelle user, puis commit de bascule
-  `MOTEUR_CALCUL` défaut `legacy → pynite`.
+- **`MOTEUR_CALCUL` défaut = `pynite`** (basculé après validation locale du user).
 
 ### Étape 4 — Audit des charges, en particulier celles de vent
 - Revue exhaustive des configurations de vent (zones, catégories de terrain,

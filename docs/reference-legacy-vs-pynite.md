@@ -87,10 +87,12 @@ dictionnaire de résultats) et **la même boucle** `optimise_IPE`. Seule la
 | **4. Modèle mécanique** | 7 nœuds / 6 barres, pieds articulés, élément poutre Euler-Bernoulli 1er ordre | classes `Node`/`Beam` **↔** `FEModel3D` de PyNite | **OUI** |
 
 L'aiguillage se fait par la variable d'environnement **`MOTEUR_CALCUL`**
-(`legacy` par défaut dans le code, `pynite` sur Railway) — fonction
-`_make_solveur()` dans `calcport.py`. Les deux backends renvoient des
-**résultats identiques** (parité à 0,000 % consignée dans le journal, bug
-`Sij` corrigé des deux côtés — voir §7 et §8).
+(**`pynite` par défaut** dans le code depuis l'étape 3 ; `legacy` = oracle de
+l'ancien modèle) — fonction `_make_solveur()` dans `calcport.py`. Les deux
+backends renvoient des **résultats identiques uniquement en `N_DISC_JARRET=1`**
+(parité à 0,000 % consignée dans le journal, bug `Sij` corrigé des deux côtés —
+voir §7 et §8). En `N_DISC_JARRET>1` (défaut prod), `pynite` discrétise et
+excentre le renfort d'épaule — voir §5.11.
 
 ### 1.5 L'idée à retenir
 

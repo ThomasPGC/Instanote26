@@ -33,6 +33,10 @@ import pathlib
 REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "business"))
 
+import os as _os
+_os.environ.setdefault("MOTEUR_CALCUL", "legacy")   # harnais etape 1 = ancien modele
+_os.environ.setdefault("N_DISC_JARRET", "1")        # (le defaut prod est desormais pynite/6)
+
 import numpy as np
 import calcport as L
 import chargement_nv as chnv
