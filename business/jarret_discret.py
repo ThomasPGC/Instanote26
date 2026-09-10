@@ -246,6 +246,28 @@ def sections_jarret(arba, n_disc=None):
             for k in range(n_disc)]
 
 
+def _h_ratios(n_disc):
+    """h_ratio au milieu de chaque tronçon, du genou vers la sortie."""
+    span = COEFF_H_GENOU - COEFF_H_SORTIE
+    return [COEFF_H_GENOU - span * (k + 0.5) / n_disc for k in range(n_disc)]
+
+
+def offset_axe_neutre(arba, h_ratio, n_arc=24):
+    """Distance (cm, > 0 = vers le bas) entre la fibre moyenne de la **traverse
+    nue** et le centre de gravité de la section de jarret à `h_ratio`.
+
+    [PROTOTYPE étape 3] Sert à placer les nœuds du jarret sur son axe neutre
+    (théorie des poutres) plutôt que sur la ligne de la traverse.
+    """
+    d = _profil(arba)
+    b, tf, tw, r, h = (d[k] / 10.0 for k in ("b", "tf", "tw", "r", "h"))
+    H = h_ratio * h
+    demi = _demi_contour_droit(b, tf, tw, r, H, (h_ratio - 1.0) * h, n_arc)
+    pts = demi + [(-x, z) for x, z in reversed(demi)]
+    _A, zG, _Iy, _Iz = _moments_polygone(pts)
+    return (H - h / 2.0) - zG          # fibre moyenne traverse (H − h/2 depuis la fibre inf) − zG
+
+
 # ==========================================================================
 #  Topologie du portique discrétisé
 # ==========================================================================
@@ -271,14 +293,22 @@ class Topologie:
     __slots__ = ("n_disc", "coords", "conn", "roles", "nN", "nbar",
                  "node_tete_g", "node_tete_d", "node_faitage",
                  "node_sortie_jarret_g", "node_sortie_jarret_d",
-                 "bars_jarret_g", "bars_jarret_d", "bar_genou_g", "bar_genou_d")
+                 "bars_jarret_g", "bars_jarret_d", "bar_genou_g", "bar_genou_d",
+                 "excentre_arba")
 
 
-def construire_topologie(geom, n_disc=None):
+def construire_topologie(geom, n_disc=None, arba=None):
     """Construit la `Topologie` du portique pour `n_disc` tronçons de jarret.
 
     `n_disc = 1` : reproduit à l'identique les 7 nœuds / 6 barres de
     `calcport.def_noeud_barres` (garde-fou de parité legacy).
+
+    `arba` (nom de profil) : [PROTOTYPE étape 3] mode **excentré** — les nœuds
+    du jarret (genou, intérieurs, sortie) sont abaissés sur l'axe neutre
+    (centre de gravité) de la section locale ; le nœud de genou étant le sommet
+    du poteau, celui-ci est physiquement raccourci. Le jarret n'est alors plus
+    colinéaire à la traverse. Sans `arba` : jarret sur la ligne de la traverse
+    (comportement par défaut de l'étape 3).
     """
     if n_disc is None:
         n_disc = N_DISC_JARRET
@@ -329,6 +359,27 @@ def construire_topologie(geom, n_disc=None):
     topo.nbar = len(conn)
     topo.bar_genou_g = topo.bars_jarret_g[0]
     topo.bar_genou_d = topo.bars_jarret_d[-1]
+    topo.excentre_arba = None
+
+    if arba is not None and n_disc > 1:
+        # --- [PROTOTYPE] abaissement des nœuds du jarret sur l'axe neutre ---
+        e = [offset_axe_neutre(arba, hr) for hr in _h_ratios(n_disc)]   # par tronçon (genou->sortie)
+        # offset au nœud p (0 = genou, n_disc = sortie) : moyenne des tronçons adjacents
+        o = [e[0]] + [0.5 * (e[p - 1] + e[p]) for p in range(1, n_disc)] + [e[-1]]
+
+        def _noeuds_chaine(bars):
+            return [conn[bars[0]][0]] + [conn[b][1] for b in bars]
+
+        # jarret G : nœuds ordonnés genou(N1) -> sortie(N2) ; offsets o[0..n_disc]
+        for p, nd in enumerate(_noeuds_chaine(topo.bars_jarret_g)):
+            x, y = coords[nd]
+            coords[nd] = (x, y - o[p])
+        # jarret D : nœuds ordonnés sortie(N4) -> genou(N5) ; offsets inversés
+        for p, nd in enumerate(_noeuds_chaine(topo.bars_jarret_d)):
+            x, y = coords[nd]
+            coords[nd] = (x, y - o[n_disc - p])
+        topo.excentre_arba = arba
+
     return topo
 
 

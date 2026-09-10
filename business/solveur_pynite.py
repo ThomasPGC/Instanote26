@@ -35,6 +35,7 @@ Dépendances runtime effectivement chargées : `numpy`, `scipy`, `PrettyTable`.
 n'utilise pas) est **neutralisé** : voir le stub `Pynite.ShearWall` ci-dessous.
 """
 
+import os
 import sys as _sys
 import types as _types
 
@@ -73,6 +74,11 @@ _IDX6 = np.array([0, 1, 5, 6, 7, 11])
 _FY = 235.0                      # S235 (comme calculer_et_verifier_resultats, fy en dur)
 _FY_LIM = _FY / 10.0
 _FV_LIM = (_FY / 3.0 ** 0.5) / 10.0
+
+# Attributs posés par `SolveurPyNite._build_model` — capturés/restaurés par
+# `_ensure_built` quand la géométrie dépend de la traverse (mode excentré).
+_ETAT_MODELE = ("_topo", "_conn", "_nbar", "_tx_mom", "_tx_cis", "_m", "_nN",
+                "_free", "_rhs", "_rhs_cp_ext", "_rhs_sw", "_fer_ext", "_fer_sw", "_T")
 
 
 def _tx_points(topo):
@@ -113,7 +119,7 @@ class SolveurPyNite:
     où `ens_resu` a exactement les clés produites par `calcport.calcport`
     (3 déplacements clés + 13 taux `tx_*`), en convention legacy."""
 
-    def __init__(self, geom, charges, n_disc=1):
+    def __init__(self, geom, charges, n_disc=1, excentre=None):
         # Chaque cas reconstruit ses efforts d'about avec SON PROPRE `fer`
         # (efforts d'encastrement du cas), et pas avec celui du CP : le bug `Sij`
         # du legacy (cf. CLAUDE.md) n'est PAS reproduit. Le mode « parité stricte »
@@ -125,14 +131,42 @@ class SolveurPyNite:
         #         parité stricte avec `_SolveurLegacy` ;
         #   >1 -> jarret discrétisé à inertie variable (étape 3). Le legacy n'a
         #         PAS cette variante : parité vérifiée seulement en `n_disc=1`.
+        #
+        # `excentre` : [PROTOTYPE étape 3] abaisser les nœuds du jarret sur
+        #   l'axe neutre (centre de gravité) de sa section. La géométrie dépend
+        #   alors de la traverse -> le modèle est (re)construit à chaque
+        #   changement de `arba` (mis en cache). `None` -> lit `JARRET_EXCENTRE`.
         self._charges = charges
         self._noms = [c[0] for c in charges]
         self._cp = self._noms[0]                      # le 1er cas est toujours "CP..."
+        self._geom = geom
+        self._n_disc = n_disc
+        if excentre is None:
+            excentre = os.environ.get("JARRET_EXCENTRE") == "1"
+        self._excentre = bool(excentre) and n_disc > 1
+        self._cache_build = {}                        # arba -> état de modèle (mode excentré)
+        self._arba_courant = None
 
-        # --- géométrie & topologie (jarret_discret) ; `n_disc=1` reproduit
-        #     def_noeud_barres à l'identique
-        self._topo = jd.construire_topologie(geom, n_disc)
-        topo = self._topo
+        if not self._excentre:
+            self._build_model(jd.construire_topologie(geom, n_disc))
+
+    def _ensure_built(self, arba):
+        """Mode excentré : (re)construit le modèle pour la traverse `arba`
+        (géométrie du jarret = axe neutre, donc dépendante de la section)."""
+        if not self._excentre or arba == self._arba_courant:
+            return
+        etat = self._cache_build.get(arba)
+        if etat is None:
+            self._build_model(jd.construire_topologie(self._geom, self._n_disc, arba=arba))
+            etat = {a: getattr(self, a) for a in _ETAT_MODELE}
+            self._cache_build[arba] = etat
+        else:
+            for a, v in etat.items():
+                setattr(self, a, v)
+        self._arba_courant = arba
+
+    def _build_model(self, topo):
+        self._topo = topo
         self._conn = list(topo.conn)
         self._nbar = topo.nbar
         self._tx_mom, self._tx_cis = _tx_points(topo)
@@ -141,7 +175,7 @@ class SolveurPyNite:
                  for (i, j) in self._conn]
 
         # charges « logiques » (6 segments / 21 slots nodaux) -> modèle discrétisé
-        charges_exp = jd.expanser_charges(charges, topo)
+        charges_exp = jd.expanser_charges(self._charges, topo)
 
         # --- modèle PyNite (3D bridé en plan XY : DZ/RX/RY bloqués partout ;
         #     N0/N6 bi-articulés)
@@ -238,6 +272,7 @@ class SolveurPyNite:
         renvoie `(props, longueurs, {nom: [eff6 par barre]}, {nom: df})`, `eff6`
         = [Ni,Vi,Mi,Nj,Vj,Mj] en convention legacy (efforts d'about), `df` =
         vecteur déplacement complet (6 DDL/nœud, convention PyNite = physique)."""
+        self._ensure_built(arba)             # no-op sauf mode excentré (géométrie ~ arba)
         m = self._m
         nbar = self._nbar
         props = self._props(poteau, arba)
