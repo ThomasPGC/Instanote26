@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Non-régression endpoint — parité `MOTEUR_CALCUL=legacy` vs `=pynite`.
+"""Non-régression endpoint — parité `MOTEUR_CALCUL=legacy` vs `=pynite`,
+**mode ancien modèle** (`N_DISC_JARRET=1`).
 
 `charge_et_sections()` doit renvoyer EXACTEMENT le même dict avec les deux
 backends (c'est ce que consomment `/htmx/calcul` et `/htmx/calcul-pdf` : le
 dict est rendu tel quel dans les templates → dict identique ⇒ HTML/PDF
 identiques). Bug `Sij` corrigé des deux côtés (branche fix/legacy-sij).
+
+⚠️ Depuis l'étape 3 (jarret discrétisé), le backend `pynite` utilise par
+défaut `N_DISC_JARRET=6` (renfort d'épaule à inertie variable) et n'est donc
+**plus** identique au legacy. Ce harnais force `N_DISC_JARRET=1` : il vérifie
+que le legacy reste l'oracle exact de l'ancien modèle. La validation du modèle
+discrétisé est dans `check_3d_discretise.py`.
 
 Le flag est lu à l'import de `calcport` : on compare via deux sous-processus
 (un par valeur du flag) qui dumpent le résultat en JSON.
@@ -73,7 +80,8 @@ print(json.dumps(out, ensure_ascii=False, indent=1, sort_keys=True))
 
 
 def _run(moteur):
-    env = dict(os.environ, MOTEUR_CALCUL=moteur, PYTHONIOENCODING="utf-8")
+    env = dict(os.environ, MOTEUR_CALCUL=moteur, PYTHONIOENCODING="utf-8",
+               N_DISC_JARRET="1")     # parité = ancien modèle uniquement (cf. docstring)
     p = subprocess.run([sys.executable, "-X", "utf8", "-c", _DUMP],
                        capture_output=True, text=True, env=env, cwd=str(REPO))
     if p.returncode != 0:

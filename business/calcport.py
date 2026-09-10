@@ -514,13 +514,19 @@ def _make_solveur(geom, charges):
     """Fabrique le backend de résolution selon MOTEUR_CALCUL.
 
     - "legacy" (défaut) : solveur maison (méthode des déplacements), bug Sij
-      corrigé (cf. _SolveurLegacy.resoudre).
-    - "pynite" (ou l'alias historique "pynite_corrige") : bascule PyNiteFEA.
-    Les deux donnent des résultats identiques.
+      corrigé (cf. _SolveurLegacy.resoudre). Renfort d'épaule = 1 barre
+      prismatique `1,66·h` (fonction `jarret()`).
+    - "pynite" (ou l'alias historique "pynite_corrige") : backend PyNiteFEA.
+      Renfort d'épaule **discrétisé** en `jarret_discret.N_DISC_JARRET` tronçons
+      à inertie variable (étape 3 de la roadmap moteur). Le legacy n'a PAS cette
+      variante : il reste l'oracle de l'ancien modèle. Parité legacy ↔ pynite
+      vérifiée seulement en `N_DISC_JARRET=1` (cf. validation/pynite_check/
+      check_3c...).
     """
     if MOTEUR_CALCUL in ("pynite", "pynite_corrige"):
         from solveur_pynite import SolveurPyNite   # import tardif : évite le cycle
-        return SolveurPyNite(geom, charges)
+        from jarret_discret import N_DISC_JARRET
+        return SolveurPyNite(geom, charges, n_disc=N_DISC_JARRET)
     return _SolveurLegacy(geom, charges)
 
 
