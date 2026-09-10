@@ -771,7 +771,20 @@ def charge_et_sections(geom=GEOMTEST, localisation=LOCALITEST, cp=CPTEST):
         return {"poteau": "problème de localisation"}, e
 
     try:
-        return optimise_IPE(geom, charges_calc), "OK"
+        res = optimise_IPE(geom, charges_calc)
+        # Diagnostic a posteriori de l'effort tranchant (déformation négligée
+        # dans la raideur — Euler-Bernoulli). NON bloquant : ne change aucune
+        # section, n'interrompt jamais la réponse. Seulement en mode pynite
+        # (modèle à jarret discrétisé).
+        if MOTEUR_CALCUL in ("pynite", "pynite_corrige"):
+            try:
+                from jarret_discret import diagnostic_cisaillement, N_DISC_JARRET
+                if N_DISC_JARRET > 1:
+                    res.update(diagnostic_cisaillement(
+                        geom, charges_calc, res["poteau"], res["traverse"]))
+            except Exception:
+                pass
+        return res, "OK"
     except PasDeSolutionIPE:
         return {"poteau": "Aucun profil IPE disponible pour cette configuration "
                            "— nous contacter pour une étude spécifique"}, None

@@ -233,55 +233,81 @@ class SolveurPyNite:
         return [(r["A"], r["Iy"], r["Wpl.y"], r["Avz"])
                 for r in jd.sections_par_barre(self._topo, poteau, arba)]
 
-    def resoudre(self, poteau, arba):
+    def _solve_all(self, poteau, arba):
+        """Cœur commun : résout tous les cas élémentaires pour (poteau, arba) et
+        renvoie `(props, longueurs, {nom: [eff6 par barre]}, {nom: df})`, `eff6`
+        = [Ni,Vi,Mi,Nj,Vj,Mj] en convention legacy (efforts d'about), `df` =
+        vecteur déplacement complet (6 DDL/nœud, convention PyNite = physique)."""
         m = self._m
         nbar = self._nbar
         props = self._props(poteau, arba)
         aire = [p[0] for p in props]
-        wpl = [p[2] for p in props]
-        avz = [p[3] for p in props]
 
-        # mutation des sections en place -> m.Ke() et member.ke() la reflètent
         for k, (a, iy, _w, _v) in enumerate(props):
             sec = m.sections[f"S{k}"]
             sec.A = a
-            sec.Iz = iy                     # PyNite : flexion plan XY = autour de Z
+            sec.Iz = iy
         ke = [np.asarray(m.members[f"M{k}"].ke()) for k in range(nbar)]
 
-        # assemblage (PyNite) + partition + factorisation (ici)
         K = np.asarray(m.Ke(self._cp, False, False, False))
         lu = sla.lu_factor(K[np.ix_(self._free, self._free)], check_finite=False)
 
-        # RHS du cas CP = charge externe + poids propre (Σ A_k · dens · SW_unit_k)
         rhs_cp = self._rhs_cp_ext.copy()
         for k in range(nbar):
             rhs_cp = rhs_cp + (aire[k] * DENS_LIN) * self._rhs_sw[k]
-
-        # FER local du cas CP (externe + poids propre).
         fer_cp = [self._fer_ext[self._cp][k] + (aire[k] * DENS_LIN) * self._fer_sw[k]
                   for k in range(nbar)]
 
-        resultats = []
+        eff_par_cas = {}
+        df_par_cas = {}
         for nom in self._noms:
             rhs = rhs_cp if nom == self._cp else self._rhs[nom]
             d1 = sla.lu_solve(lu, rhs, check_finite=False)
             df = np.zeros(self._nN * 6)
             df[self._free] = d1
-
-            # FER propre au cas courant (le CP porte en plus son poids propre).
             fer = fer_cp if nom == self._cp else self._fer_ext[nom]
-
-            # efforts d'about par barre, convention legacy [Ni,Vi,Mi,Nj,Vj,Mj]
-            #   floc = ke · (T · d_barre) + fer
-            #   [Ni,Vi,Mi,Nj,Vj,Mj]_legacy = -floc[[0,1,5,6,7,11]]     (checkpoint D-ter)
             eff = []
             for k in range(nbar):
                 i, j = self._conn[k]
                 dm = np.concatenate([df[i * 6:i * 6 + 6], df[j * 6:j * 6 + 6]])
                 floc = ke[k] @ (self._T[k] @ dm) + fer[k]
-                eff.append(-floc[_IDX6])          # [Ni,Vi,Mi,Nj,Vj,Mj]
+                eff.append(-floc[_IDX6])
+            eff_par_cas[nom] = eff
+            df_par_cas[nom] = df
 
-            t = self._topo
+        longueurs = [float(np.hypot(self._topo.coords[j][0] - self._topo.coords[i][0],
+                                    self._topo.coords[j][1] - self._topo.coords[i][1]))
+                     for (i, j) in self._conn]
+        return props, longueurs, eff_par_cas, df_par_cas
+
+    def details_efforts(self, poteau, arba):
+        """Efforts d'about bruts + géométrie/section par barre, pour le
+        diagnostic a posteriori d'effort tranchant (`jarret_discret.
+        diagnostic_cisaillement`). Ne participe PAS au dimensionnement."""
+        props, longueurs, eff_par_cas, _df = self._solve_all(poteau, arba)
+        t = self._topo
+        return {
+            "noms": list(self._noms),
+            "E": E, "G": E / 2.6,
+            "roles": list(t.roles),
+            "bars_jarret": list(t.bars_jarret_g) + list(t.bars_jarret_d),
+            "longueurs": longueurs,
+            "props": props,                       # (A, Iy, Wpl.y, Avz) par barre
+            "eff": eff_par_cas,                   # {nom: [ [Ni,Vi,Mi,Nj,Vj,Mj], ... ]}
+        }
+
+    def resoudre(self, poteau, arba):
+        """[(nom_cas, ens_resu), ...] — même sortie que `_SolveurLegacy`
+        (3 déplacements clés + 13 taux `tx_*`, convention legacy)."""
+        props, _long, eff_par_cas, df_par_cas = self._solve_all(poteau, arba)
+        wpl = [p[2] for p in props]
+        avz = [p[3] for p in props]
+        t = self._topo
+
+        resultats = []
+        for nom in self._noms:
+            eff = eff_par_cas[nom]
+            df = df_par_cas[nom]
             ens = {
                 # déplacements en convention legacy (opposé du physique, cf. règle 1)
                 "depl_t_p_g": -df[t.node_tete_g * 6 + 0],

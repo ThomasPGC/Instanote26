@@ -43,13 +43,16 @@ CASES = {
 REF_DISCRET = {
     "cas-01-compact": dict(poteau="IPE 160", traverse="IPE 140", fleche=2.9, ratio_fleche=1400,
                            deplacement_gauche=22.1, deplacement_droite=22.2, depl_tete_pot=22.2,
-                           ratio_depl=157, taux_trav=40.0, masse=168, taux_max_brut=37.77),
+                           ratio_depl=157, taux_trav=40.0, masse=168, taux_max_brut=37.77,
+                           cis_ecart_fleche_pct=0.3, cis_taux_ame_jarret_pct=11.4),
     "cas-02-bas-large": dict(poteau="IPE 600", traverse="IPE 600", fleche=58.1, ratio_fleche=378,
                              deplacement_gauche=3.3, deplacement_droite=4.9, depl_tete_pot=4.9,
-                             ratio_depl=1025, taux_trav=100.0, masse=4174, taux_max_brut=98.18),
+                             ratio_depl=1025, taux_trav=100.0, masse=4174, taux_max_brut=98.18,
+                             cis_ecart_fleche_pct=0.9, cis_taux_ame_jarret_pct=20.6),
     "cas-03-haut-fin": dict(poteau="IPE 600", traverse="IPE 500", fleche=2.0, ratio_fleche=4068,
                             deplacement_gauche=62.9, deplacement_droite=62.8, depl_tete_pot=62.9,
-                            ratio_depl=158, taux_trav=50.0, masse=3242, taux_max_brut=54.85),
+                            ratio_depl=158, taux_trav=50.0, masse=3242, taux_max_brut=54.85,
+                            cis_ecart_fleche_pct=0.6, cis_taux_ame_jarret_pct=14.5),
 }
 
 # Ancien modèle (legacy) — pour la garde de sécurité.

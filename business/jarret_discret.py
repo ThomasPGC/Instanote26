@@ -378,6 +378,106 @@ def expanser_charges(charges, topo):
 
 
 # ==========================================================================
+#  Diagnostic a posteriori — déformation d'effort tranchant (non bloquant)
+# ==========================================================================
+
+_FV_LIM = (235.0 / 3.0 ** 0.5) / 10.0     # daN/mm² (S235, comme solveur_pynite)
+
+# Pondérations ELS / ELU (identiques à optimise_IPE — lecture seule).
+_COMBI_DEPL = [(1, 1, 0), (1, 1, .6), (1, 0, 1), (1, 0.5, 1)]
+_COMBI_EFF = [(1.35, 1.5, 0, 0), (1.35, 1.5, 0, .9), (1.35, 0, 0, 1.5),
+              (1, 0, 0, 1.5), (1.35, 0.75, 0, 1.5), (1, 0, 1, 0)]
+
+
+def _simpson01(f, n=16):
+    """∫₀¹ f(s) ds par Simpson (n pair)."""
+    h = 1.0 / n
+    s = f(0.0) + f(1.0)
+    for k in range(1, n):
+        s += (4.0 if k % 2 else 2.0) * f(k * h)
+    return s * h / 3.0
+
+
+def _energies_barre(eff6, L, EI, GAv):
+    """(∫M²/EI dx, ∫V²/GAv dx) sur une barre, M/V reconstruits depuis les
+    efforts d'about (V linéaire, M parabolique consistant)."""
+    V0, VL, M0 = -eff6[1], eff6[4], -eff6[2]
+    dV = VL - V0
+    intM2 = L * _simpson01(lambda s: (M0 + V0 * L * s + dV * L * s * s / 2.0) ** 2)
+    intV2 = L * _simpson01(lambda s: (V0 + dV * s) ** 2)
+    return intM2 / EI, intV2 / GAv
+
+
+def diagnostic_cisaillement(geom, charges, poteau, arba, n_disc=None):
+    """Diagnostic **a posteriori** de la déformation d'effort tranchant, sur la
+    section retenue par `optimise_IPE`. Ne change AUCUNE section — le solveur
+    reste en Euler-Bernoulli (décision figée). Report-only.
+
+    Renvoie un dict à fusionner dans le résultat de `charge_et_sections` :
+      - `cis_ecart_fleche_pct` : contribution estimée de l'effort tranchant à la
+        flèche/dérive (énergie de cisaillement / énergie de flexion, combinaison
+        ELS la plus fléchie) ;
+      - `cis_taux_ame_jarret_pct` : taux de cisaillement d'âme max le long du
+        renfort d'épaule (tous tronçons), combinaison ELU ;
+      - `cis_note` : phrase pour l'encart résultats (écran + PDF).
+    """
+    if n_disc is None:
+        n_disc = N_DISC_JARRET
+    from solveur_pynite import SolveurPyNite
+    d = SolveurPyNite(geom, charges, n_disc=n_disc).details_efforts(poteau, arba)
+
+    noms, E_, G_ = d["noms"], d["E"], d["G"]
+    L = d["longueurs"]
+    props = d["props"]                          # (A, Iy, Wpl.y, Avz) par barre
+    eff = d["eff"]
+    nbar = len(L)
+    cp, nei, nacc = noms[0], noms[1], noms[2]
+    vents = noms[3:]
+
+    def eff_combi(poids, cas_list):
+        """efforts d'about combinés par barre : Σ poids_k · eff[cas_k]
+        (les efforts se superposent linéairement)."""
+        return [[sum(poids[k] * eff[cas_list[k]][b][c] for k in range(len(poids)))
+                 for c in range(6)] for b in range(nbar)]
+
+    # --- ELS : ratio énergie cisaillement / énergie flexion, combi la plus fléchie
+    best_ratio, best_Ub = 0.0, -1.0
+    for cv in vents:
+        for w in _COMBI_DEPL:
+            ec = eff_combi(w, [cp, nei, cv])
+            Ub = Uv = 0.0
+            for b in range(nbar):
+                A_, Iy_, _wpl, Avz_ = props[b]
+                im2, iv2 = _energies_barre(ec[b], L[b], E_ * Iy_, G_ * Avz_)
+                Ub += im2
+                Uv += iv2
+            if Ub > best_Ub:
+                best_Ub, best_ratio = Ub, (Uv / Ub if Ub > 0 else 0.0)
+    ecart_fleche_pct = round(best_ratio * 100.0, 1)
+
+    # --- ELU : cisaillement d'âme le long du renfort d'épaule (tous tronçons)
+    taux_max, ou = 0.0, None
+    for cv in vents:
+        for w in _COMBI_EFF:
+            ec = eff_combi(w, [cp, nei, nacc, cv])
+            for b in d["bars_jarret"]:
+                Avz_ = props[b][3]
+                for comp in (1, 4):
+                    tx = abs(ec[b][comp]) / (Avz_ * _FV_LIM) / 100.0
+                    if tx > taux_max:
+                        taux_max, ou = tx, b
+    taux_ame_pct = round(taux_max * 100.0, 1)
+
+    note = (f"Déformation d'effort tranchant estimée à +{ecart_fleche_pct:.1f} % "
+            f"sur la flèche/dérive : non prise en compte dans le dimensionnement "
+            f"(hypothèse Euler-Bernoulli). Cisaillement d'âme du renfort d'épaule : "
+            f"{taux_ame_pct:.1f} % max.")
+    return {"cis_ecart_fleche_pct": ecart_fleche_pct,
+            "cis_taux_ame_jarret_pct": taux_ame_pct,
+            "cis_note": note}
+
+
+# ==========================================================================
 #  self-check : recoupement PropSection (validation/jarrets/*.png)
 # ==========================================================================
 # PropSection v1.0.4, « Section Paramétrée » n°7 (I à 3 semelles + congés r).
