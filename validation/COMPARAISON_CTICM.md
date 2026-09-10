@@ -19,20 +19,34 @@ synthèses PORTAL+) :
 | cas-02-bas-large | IPE 600 | **IPE 500** | poteaux identiques ; **arbalétriers 2 crans sous Instanote** (IPE 500 vs IPE 600) |
 
 → Sur cas-02, CTICM dimensionne l'arbalétrier à IPE 500 là où Instanote exige
-IPE 600 : **l'influence du jarret devient prépondérante**. C'est le signal le
-plus net pour l'**étape 3** de la roadmap moteur (jarret discrétisé en barres
-à inertie variable au lieu de la barre prismatique `1,66·h`).
+IPE 600.
+
+**MISE À JOUR — étape 3 faite (jarret discrétisé) :** la discrétisation du
+renfort d'épaule (6 tronçons, âme dégressive `2h→1h`, section 3 semelles + `r`
+recoupée PropSection) **ne résorbe pas** cet écart. Sur les 3 jeux, **aucune
+section retenue ne change** ; `taux_max` bouge de −0,07 / −0,66 / −0,07 point.
+Le point gouvernant de cas-02 est le **moment de poteau** (`tx_mom_pot ≈ 98 %`,
+cf. §2), pas le jarret : à sections forcées, IPE 600/500 donne
+`tx_mom_pot = 103 %` (rejeté), IPE 600/600 = 98,2 % (retenu) — un arbalétrier
+plus raide **soulage le poteau**. L'écart de ~10 pts sur le moment de poteau
+n'est donc **pas** porté par le renfort d'épaule → pistes : zones de vent de
+rive F/G/J (**étape 4**), modélisation du jeu poteau/traverse (**étape 7**,
+longueur de jarret). Détail : `docs/historique/jarret-discretise-etape3.md`.
 
 ## 1. Les 3 modes Instanote
 
 `compare_3modes_ctcim.py` — `taux_max` **brut** (avant `round(., 1)` qui donne
 le `taux_trav` affiché) :
 
-| cas | legacy (bug `Sij`) | pynite parité stricte | **corrigé** (legacy fix + pynite_corrige) |
-|---|---|---|---|
-| cas-01-compact  | 37,98 % | 37,98 % | **37,84 %** |
-| cas-02-bas-large | 99,33 % | 99,33 % | **98,84 %** |
-| cas-03-haut-fin | 56,07 % | 56,07 % | **54,92 %** |
+| cas | legacy (bug `Sij`) | pynite parité stricte | **corrigé** (legacy fix + pynite_corrige) | **jarret discrétisé** (étape 3, `N_DISC_JARRET=6`) |
+|---|---|---|---|---|
+| cas-01-compact  | 37,98 % | 37,98 % | **37,84 %** | 37,77 % |
+| cas-02-bas-large | 99,33 % | 99,33 % | **98,84 %** | 98,18 % |
+| cas-03-haut-fin | 56,07 % | 56,07 % | **54,92 %** | 54,85 % |
+
+Colonne « jarret discrétisé » : rejeu `compare_3modes_ctcim.py` après l'étape 3.
+Sections retenues **inchangées** (IPE 160/140 · 600/600 · 600/500), flèche/dérive
++1 à +2 %.
 
 Sections retenues **identiques dans les 3 modes** : IPE 160/140 · IPE 600/600 ·
 IPE 600/500. `fleche` et `derive` identiques dans les 3 modes (l'ELS n'est pas

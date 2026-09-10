@@ -37,6 +37,9 @@ travailler *maintenant*. Le détail et l'historique sont dans `docs/` (voir
   - `business/calcport.py` — moteur historique + `optimise_IPE` +
     `_SolveurLegacy` + aiguillage `MOTEUR_CALCUL`
   - `business/solveur_pynite.py` — backend PyNiteFEA (`MOTEUR_CALCUL=pynite`)
+  - `business/jarret_discret.py` — renfort d'épaule discrétisé (étape 3) :
+    section 3 semelles + `r`, topologie paramétrée par `N_DISC_JARRET`,
+    diagnostic cisaillement a posteriori
   - `business/chargement_nv.py` — charges neige / vent
 - `static/js/portique.js` — schéma SVG temps réel + géoloc + hooks calcul/PDF
 - `static/js/entreprise-form.js` — aide SIRET + adresse (inscription, `/compte`)
@@ -91,27 +94,41 @@ résultats (écran + PDF), acceptation à l'inscription.
 - **Pieds de poteau bi-articulés** (encastrement hors périmètre ;
   piste offre premium / ponts roulants — `docs/roadmap-produit.md`).
 - **Résolution Euler-Bernoulli** (cisaillement négligé dans la raideur).
-- **Renfort d'épaule gelé** : 1 barre prismatique, hauteur `1,66 × h_traverse`
-  (`jarret()`), longueur = 10 % de la portée. Discrétisation = étape 3.
+  Diagnostic a posteriori non bloquant (`jarret_discret.diagnostic_cisaillement`)
+  depuis l'étape 3 : effet < 1 % sur la flèche → EB confirmé.
+- **Renfort d'épaule** : **legacy** = 1 barre prismatique `1,66 × h_traverse`
+  (`jarret()`), figé = oracle de l'ancien modèle. **pynite** (étape 3 faite) =
+  discrétisé en `N_DISC_JARRET` (défaut 6) tronçons, âme dégressive linéaire
+  `2·h → 1·h`, section I à 3 semelles + congés `r` recoupée PropSection
+  (`jarret_discret.caracs_section_jarret`). Longueur inchangée (10 % portée).
 - **S235 seul** (`fy = 235` en dur).
 - **Combinaisons `COMBI_DEPL` / `COMBI_EFF` inchangées.** Si un oubli EC0
   manifeste est repéré : **le signaler au user avant** toute correction.
 
-### `MOTEUR_CALCUL` (variable d'env)
-- absente / `legacy` → solveur maison (méthode des déplacements)
-- `pynite` (alias `pynite_corrige`) → `business/solveur_pynite.py`
-- **Résultats identiques.** Défaut code = `legacy` ; Railway = `pynite`.
-  En local : `MOTEUR_CALCUL=pynite python ...`.
+### `MOTEUR_CALCUL` / `N_DISC_JARRET` (variables d'env)
+- `MOTEUR_CALCUL` absente / `legacy` → solveur maison, renfort d'épaule
+  `1,66·h` prismatique ; `pynite` (alias `pynite_corrige`) →
+  `business/solveur_pynite.py`, renfort d'épaule **discrétisé**.
+- `N_DISC_JARRET` : tronçons par renfort d'épaule (défaut **6**). `1` = ancien
+  modèle (barre unique), utilisé par les harnais de parité.
+- **Résultats identiques seulement en `N_DISC_JARRET=1`.** Défaut code =
+  `legacy` (bascule vers `pynite` = commit final de l'étape 3, après validation
+  manuelle) ; Railway = `pynite`.
 
 ### État d'avancement
-- **Étape 1 (bascule PyNite) : faite et validée** — sous-étapes 1.a→1.g,
-  découpage code A→H, bug `Sij` du legacy corrigé des deux côtés.
-  **Non poussée / non déployée** : attente de la validation locale manuelle du
-  user, puis push + déploiement. Journal : `docs/historique/bascule-pynite-etape1.md`.
-- **Étape 2 (validation croisée CTICM) : prochaine — jalon bloquant.**
-- Scripts de parité : `validation/pynite_check/` (à relancer à toute montée de
-  version PyNite ou refactor moteur — PyNite est **piqué à `==3.0.0`**, voir la
-  check-list dans `docs/moteur-de-calcul.md`).
+- **Étape 1 (bascule PyNite) : faite et validée** — journal
+  `docs/historique/bascule-pynite-etape1.md`.
+- **Étape 2 (validation croisée CTICM) : validée** — `validation/COMPARAISON_CTICM.md`.
+- **Étape 3 (jarret discrétisé) : faite** — branche `feat/jarret-discretise-etape3`.
+  Section 3 semelles + `r` recoupée PropSection ; legacy figé = oracle ;
+  diagnostic cisaillement non bloquant. **Aucune section retenue ne change** sur
+  les 3 jeux ; écart CTICM cas-02 porté par le moment de poteau (→ étape 4).
+  Journal : `docs/historique/jarret-discretise-etape3.md`. **Reste :** validation
+  manuelle user, puis commit de bascule `MOTEUR_CALCUL` défaut `legacy → pynite`.
+- **Étape 4 (audit des charges de vent) : prochaine.**
+- Scripts de parité : `validation/pynite_check/` (`check_1*` + `check_3*` — à
+  relancer à toute montée de version PyNite ou refactor moteur ; PyNite **piqué
+  à `==3.0.0`**, check-list dans `docs/moteur-de-calcul.md`).
 
 ## Déploiement (résumé — détail : `docs/deploiement-railway.md`)
 - Service Railway connecté à la branche `master` : **push = rebuild + redémarrage**.
@@ -151,6 +168,12 @@ résultats (écran + PDF), acceptation à l'inscription.
   Un schéma qui prend de l'avance sur le pointeur Alembic → crash-loop en prod.
 - **PyNite piqué `==3.0.0`** : toute montée de version = projet à part entière,
   check-list obligatoire dans `docs/moteur-de-calcul.md`.
+- **Parité legacy ↔ pynite = ancien modèle uniquement.** Depuis l'étape 3, le
+  backend `pynite` discrétise le renfort d'épaule (`N_DISC_JARRET=6` par
+  défaut) et **n'est plus identique au legacy**. `check_1g` est épinglé à
+  `N_DISC_JARRET=1` ; `check_3c` teste la parité de l'ancien modèle ;
+  `check_3d` valide le modèle discrétisé. Ne pas « réparer » une divergence
+  `check_1g` en `N_DISC_JARRET=6` — c'est attendu.
 - **fastapi-users 15.0.5** : `CookieTransport.get_login_response()` construit
   lui-même sa `Response` (API différente des versions antérieures).
 
