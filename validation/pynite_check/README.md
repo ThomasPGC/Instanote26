@@ -21,9 +21,19 @@ ce qui a été testé, quand.
 | `check_1d_familles_charges.py` | 1.d | Efforts d'about des 6 barres identiques legacy vs PyNite sur les 22 cas élémentaires des 3 jeux — familles CP / NEI / VEN + charges nodales. |
 | `check_1e_taux.py` | 1.e | Les 13 `tx_*` recalculés depuis les efforts PyNite (formule legacy exacte), comparés **au signe près** cas par cas ; détail des moments critiques du renfort d'épaule + gouvernant post-`COMBI_EFF`. |
 | `check_1f_optimise.py` | 1.f | Boucle `optimise_IPE` complète (monkeypatch d'un `resoudre_cas` PyNite) : sections retenues identiques sur 3 jeux + 12 cas aléatoires reproductibles. |
-| `check_1g_non_regression.py` | G | `charge_et_sections()` dict identique `MOTEUR_CALCUL=legacy` vs `pynite` (2 sous-processus), 32 cas dont `PasDeSolutionIPE` et zonage introuvable. Bug `Sij` corrigé des deux côtés (fix/legacy-sij). |
-| `compare_3modes_ctcim.py` | étape 2 CTICM | Rejoue cas-01/02/03 avec `legacy` et `pynite` : poteau/traverse, `taux_trav`, `taux_max` brut, flèche, masse. Pas de verdict. Le comparatif historique à 3 modes (avec « pynite parité stricte », retiré à l'étape 4) est figé dans `validation/COMPARAISON_CTICM.md`. |
+| `check_1g_non_regression.py` | G | `charge_et_sections()` dict identique `MOTEUR_CALCUL=legacy` vs `pynite` (2 sous-processus), 32 cas dont `PasDeSolutionIPE` et zonage introuvable. Bug `Sij` corrigé des deux côtés (fix/legacy-sij). **Épinglé à `N_DISC_JARRET=1`** depuis l'étape 3 (parité = ancien modèle uniquement). |
+| `compare_3modes_ctcim.py` | étapes 2–3 | Rejoue cas-01/02/03 avec `legacy`, `pynite ancien` (N_DISC=1) et `pynite discrétisé` (N_DISC=6) : poteau/traverse, `taux_trav`, `taux_max` brut, flèche, masse. Pas de verdict. |
 | `check_deps_runtime.py` | garde-fou deps | Après un `charge_et_sections()` en `MOTEUR_CALCUL=pynite` : `matplotlib` **pas** chargé (stub `Pynite.ShearWall`), `scipy` chargé. À rejouer à toute montée de version de PyNiteFEA (cf. CLAUDE.md, « Check-list montée de version PyNite »). |
+
+### Étape 3 — jarret discrétisé (`business/jarret_discret.py`)
+
+| Fichier | Sous-étape | Ce qui est vérifié |
+|---|---|---|
+| `check_3a_section_jarret.py` | 3.a | `caracs_section_jarret` (I à 3 semelles + congés `r`, intégration du contour) recoupée avec **PropSection v1.0.4** (`validation/jarrets/*.png`) sur IPE 160/300/450, hr = 150 % et ~200 % ; garde-fou intégrateur (contour 2 semelles == IPE catalogue) ; monotonie de la loi dégressive ; `sections_jarret(arba, 1)` == `[jarret(arba)]`. |
+| `check_3b_topologie.py` | 3.b | `construire_topologie` / `expanser_charges` / `sections_par_barre` : `n_disc=1` reproduit `def_noeud_barres` ; `n_disc=6` (17 nœuds / 16 barres, N0..N6 préservés, tronçons colinéaires, genou ancré) ; identité de l'expansion de charges en `n_disc=1` ; ordre des nœuds PyNite. |
+| `check_3c_non_regression_ancien_modele.py` | 3.c | `SolveurPyNite(n_disc=1)` == `_SolveurLegacy` clé par clé (< 1e-6 %) sur 3 jeux + 15 géométries aléatoires. **Gate « legacy = oracle de l'ancien modèle ».** |
+| `check_3d_discretise.py` | 3.d | Modèle discrétisé (`N_DISC_JARRET=6`) sur les 3 jeux : non-régression vs référence figée + garde de sécurité (sections jamais plus légères que l'ancien modèle, `taux_max` ne chute pas > 5 pts) + suivi de l'écart CTICM (informatif). |
+| `check_3e_profilage.py` | 3.e | Profilage : `resoudre` n=1 vs n=6 ; dense vs creux sur la matrice réduite (47×47). Pas de verdict — justifie de rester en dense. |
 
 ## Rejouer
 

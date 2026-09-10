@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
 """Comparaison des backends sur les 3 jeux de validation — support de la
-comparaison croisée CTICM (roadmap moteur, étape 2).
+comparaison croisée CTICM (roadmap moteur, étapes 2 et 3).
 
-Modes (via MOTEUR_CALCUL, un sous-processus par mode) : `legacy` et `pynite`.
-Depuis fix/legacy-sij (étape 4), le bug `Sij` est corrigé des deux côtés et
-le mode « pynite parité stricte » a été retiré → les deux colonnes doivent
-être identiques. Les chiffres historiques à 3 modes (legacy bugué / pynite
-parité / corrigé) sont figés dans `validation/COMPARAISON_CTICM.md` § 1.
+Modes (via MOTEUR_CALCUL / N_DISC_JARRET, un sous-processus par mode) :
+  - `legacy`          : solveur maison, jarret prismatique `1,66·h` ;
+  - `pynite ancien`   : backend PyNite, `N_DISC_JARRET=1` — identique au legacy ;
+  - `pynite discrétisé`: backend PyNite, `N_DISC_JARRET=6` — jarret à inertie
+    variable `2·h -> 1·h` (étape 3).
+
+Les deux premières colonnes doivent être identiques (bug `Sij` corrigé des deux
+côtés depuis fix/legacy-sij). La 3ᵉ montre l'effet du jarret discrétisé. Les
+chiffres historiques à 3 modes (legacy bugué / pynite parité / corrigé) sont
+figés dans `validation/COMPARAISON_CTICM.md` § 1.
 
 Sortie : par cas et par mode — poteau/traverse retenus, `taux_trav` arrondi,
 `taux_max` brut recalculé, flèche, masse.
@@ -86,29 +91,32 @@ _DUMP = _DUMP.replace("__BIZ__", str(REPO / "business").replace(chr(92), chr(92)
 _DUMP = _DUMP.replace("__CASES__", repr(CASES))
 
 
-def run(moteur):
-    env = dict(os.environ, MOTEUR_CALCUL=moteur, PYTHONIOENCODING="utf-8")
+def run(label, moteur, n_disc):
+    env = dict(os.environ, MOTEUR_CALCUL=moteur, PYTHONIOENCODING="utf-8",
+               N_DISC_JARRET=str(n_disc))
     p = subprocess.run([sys.executable, "-X", "utf8", "-c", _DUMP],
                        capture_output=True, text=True, env=env, cwd=str(REPO))
     if p.returncode != 0:
-        print(f"[{moteur}] KO:\n{p.stderr[-3000:]}")
+        print(f"[{label}] KO:\n{p.stderr[-3000:]}")
         sys.exit(2)
     return json.loads(p.stdout[p.stdout.index("{"):p.stdout.rstrip().rindex("}") + 1])
 
 
-MODES = ["legacy", "pynite"]
-data = {m: run(m) for m in MODES}
+MODES = [("legacy", "legacy", 1),
+         ("pynite ancien", "pynite", 1),
+         ("pynite discrétisé", "pynite", 6)]
+data = {lbl: run(lbl, m, n) for lbl, m, n in MODES}
 
 for name in CASES:
-    print(f"\n{'='*84}\n {name}\n{'='*84}")
-    print(f"  {'mode':<16}{'poteau':>10}{'traverse':>10}{'taux_trav':>11}{'taux_max brut':>15}"
+    print(f"\n{'='*88}\n {name}\n{'='*88}")
+    print(f"  {'mode':<20}{'poteau':>10}{'traverse':>10}{'taux_trav':>11}{'taux_max brut':>15}"
           f"{'fleche mm':>11}{'masse kg':>10}")
-    for m in MODES:
-        r = data[m][name]
+    for lbl, _, _ in MODES:
+        r = data[lbl][name]
         if "traverse" not in r:
-            print(f"  {m:<16}{r.get('poteau','?'):>10}")
+            print(f"  {lbl:<20}{r.get('poteau','?'):>10}")
             continue
-        print(f"  {m:<16}{r['poteau']:>10}{r['traverse']:>10}{r['taux_trav']:>10.0f}%"
+        print(f"  {lbl:<20}{r['poteau']:>10}{r['traverse']:>10}{r['taux_trav']:>10.0f}%"
               f"{r['taux_max_brut_pct']:>14.2f}%{r['fleche']:>11.1f}{r['masse']:>10.0f}")
 
 print(f"\n{'='*84}")
