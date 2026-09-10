@@ -218,7 +218,7 @@ Points où sont évalués les taux de travail (mapping barre / extrémité,
 | Clé | Point | Barre / extrémité |
 |---|---|---|
 | `tx_mom_pot_g` / `_d` | tête de poteau | B0 fin / B5 origine |
-| `tx_mom_renf_g` / `_d` | genou (entrée du renfort d'épaule) | B1 origine / B4 fin |
+| `tx_mom_renf_g` / `_d` | entrée du renfort d'épaule (angle du portique) | B1 origine / B4 fin |
 | `tx_mom_pied_arba_g` / `_d` | arbalétrier **en sortie de jarret** | B2 origine / B3 fin |
 | `tx_mom_fait` | faîtage | B2 fin (= N3) |
 | `tx_cis_*` | mêmes points, effort tranchant | idem |
@@ -466,7 +466,7 @@ forme subsiste.
   hauteur \(1{,}66\times h\), **prismatique** (constante), sur des barres B1/B4
   longues de 10 % de la portée. **Inchangé.**
 - **PyNite (étape 3).** Renfort **discrétisé** en `N_DISC_JARRET` (défaut 6)
-  tronçons à inertie variable, âme dégressive **linéaire de \(2h\) au genou à
+  tronçons à inertie variable, âme dégressive **linéaire de \(2h\) à l'épaule à
   \(h\) en sortie**. Section de chaque tronçon reconstituée en **I à 3 semelles
   + congés de raccordement \(r\)** (`jarret_discret.caracs_section_jarret`, par
   intégration du contour réel — recoupée PropSection v1.0.4). Topologie

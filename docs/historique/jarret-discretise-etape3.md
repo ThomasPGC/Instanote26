@@ -12,7 +12,7 @@ Branche : `feat/jarret-discretise-etape3` (depuis `master`).
 
 | Sujet | Décision |
 |---|---|
-| **Loi de section** | Âme dégressive **linéaire de `2·h` (genou) à `1·h` (sortie)**. Le `1,66` historique était une moyenne des deux. Échantillonnage au **milieu** de chaque tronçon : `h_ratio_k = 2 − (k+0.5)/n`. |
+| **Loi de section** | Âme dégressive **linéaire de `2·h` (épaule) à `1·h` (sortie)**. Le `1,66` historique était une moyenne des deux. Échantillonnage au **milieu** de chaque tronçon : `h_ratio_k = 2 − (k+0.5)/n`. |
 | **Fonction de section** | Ad hoc, **I à 3 semelles** (sup + intermédiaire = semelle inf de la traverse nue + inf de gousset) **+ congés de raccordement `r`**. La semelle intermédiaire a peu d'effet en flexion mais est modélisée pour le réalisme (aire, cisaillement). |
 | **« Arrondi omis » du legacy** | = les congés de raccordement `r` (colonne `IPE.csv`), ignorés par `jarret()`. Réintégrés. |
 | **Effort tranchant** | **Diagnostic post-optimisation, non bloquant.** Le solveur reste Euler-Bernoulli (décision figée). Pas d'interaction M+V. |
@@ -35,7 +35,7 @@ Tout le neuf dans `business/jarret_discret.py` (le métier historique de
   renvoie `calcport.jarret(arba)` (parité legacy).
 - **`construire_topologie(geom, n_disc)`** → `Topologie` : `coords`, `conn`,
   `roles` par barre, cartes sémantiques (`node_tete_g/_d`, `node_faitage`,
-  `node_sortie_jarret_g/_d`, `bars_jarret_g/_d`, `bar_genou_g/_d`). `n_disc=1`
+  `node_sortie_jarret_g/_d`, `bars_jarret_g/_d`, `bar_epaule_g/_d`). `n_disc=1`
   reproduit `def_noeud_barres` (7 nœuds / 6 barres, mêmes indices). `n_disc>1` :
   `n_disc−1` nœuds intérieurs par jarret ajoutés **en fin** (N7…) → N0..N6
   gardent leurs indices.
@@ -107,7 +107,7 @@ vient d'un détail de modélisation des congés, sans effet sur le
 prédimensionnement.
 
 Loi dégressive `2·h → 1·h`, `n_disc=6` : A, Iy, Wpl.y strictement décroissants
-du genou vers la sortie (vérifié IPE 160/240/400/600). Le dernier tronçon
+de l'épaule vers la sortie (vérifié IPE 160/240/400/600). Le dernier tronçon
 (`h_ratio ≈ 1,083`) tend vers « traverse + semelle de gousset », pas vers la
 traverse nue — c'est voulu (le gousset a sa propre semelle inférieure sur toute
 sa longueur).
@@ -131,8 +131,8 @@ loi `2h→1h`) — `compare_3modes_ctcim.py` :
 souple : la loi `2h→1h` passe la majeure partie de sa longueur sous `1,66·h`).
 `pynite ancien` (`N_DISC_JARRET=1`) est identique au legacy au chiffre près.
 
-Détail des taux au genou vs sortie (cas-02, section retenue) : `tx_mom_renf`
-50,8 % (legacy) → 39,5 % (discrétisé) — le tronçon de genou `h_ratio≈1,92` a un
+Détail des taux à l'épaule vs sortie (cas-02, section retenue) : `tx_mom_renf`
+50,8 % (legacy) → 39,5 % (discrétisé) — le tronçon d'épaule `h_ratio≈1,92` a un
 `Wpl` bien supérieur au `1,66·h` constant ; `tx_mom_pied_arba` reste < 40 %.
 
 ### Écart CTICM — cas-02 « bas et large » : NON résorbé par la discrétisation
@@ -149,7 +149,7 @@ attendu : le point gouvernant de cas-02 est le **moment de poteau** en tête
 | IPE 600 / IPE 600 | 98,2 % | retenu |
 
 Un arbalétrier plus raide (IPE 600) soulage le moment de poteau (moins de
-rotation au genou) → Instanote a besoin d'IPE 600 pour passer la vérification
+rotation à l'épaule) → Instanote a besoin d'IPE 600 pour passer la vérification
 du **poteau**, pas de l'arbalétrier (dont tous les taux sont < 55 %). L'écart
 de ~10 points sur le moment de poteau vs CTICM (déjà relevé dans
 `validation/COMPARAISON_CTICM.md` §2) n'est donc **pas** porté par le renfort

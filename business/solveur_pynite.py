@@ -88,26 +88,26 @@ def _tx_points(topo):
     comp. 2 = Mi, 5 = Mj, 1 = Vi, 4 = Vj.
 
     En `n_disc = 1` reproduit EXACTEMENT les tuples `_TX_MOM`/`_TX_CIS`
-    historiques (poteau=0/dernier, genou=1/4, sortie de jarret=2/3).
+    historiques (poteau=0/dernier, épaule=1/4, sortie de jarret=2/3).
     """
     b_trav_g = 1 + topo.n_disc                    # 1re barre de traverse (après poteau + jarret G)
     b_trav_d = b_trav_g + 1
     b_last = topo.nbar - 1
     mom = (
         ("tx_mom_pot_g", 0, "j"),
-        ("tx_mom_renf_g", topo.bar_genou_g, "i"),
+        ("tx_mom_renf_g", topo.bar_epaule_g, "i"),
         ("tx_mom_pied_arba_g", b_trav_g, "i"),
         ("tx_mom_fait", b_trav_g, "j"),
         ("tx_mom_pied_arba_d", b_trav_d, "j"),
-        ("tx_mom_renf_d", topo.bar_genou_d, "j"),
+        ("tx_mom_renf_d", topo.bar_epaule_d, "j"),
         ("tx_mom_pot_d", b_last, "i"),
     )
     cis = (
         ("tx_cis_pot_g", 0, "i"),
-        ("tx_cis_renf_g", topo.bar_genou_g, "i"),
+        ("tx_cis_renf_g", topo.bar_epaule_g, "i"),
         ("tx_cis_pied_arba_g", b_trav_g, "i"),
         ("tx_cis_pied_arba_d", b_trav_d, "j"),
-        ("tx_cis_renf_d", topo.bar_genou_d, "j"),
+        ("tx_cis_renf_d", topo.bar_epaule_d, "j"),
         ("tx_cis_pot_d", b_last, "j"),
     )
     return mom, cis

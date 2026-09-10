@@ -6,7 +6,7 @@
 Ce module remplace, **côté backend PyNite uniquement** (`solveur_pynite.py`),
 l'approximation historique du renfort d'épaule — 1 barre prismatique de hauteur
 d'âme constante `1,66 · h` (fonction `calcport.jarret()`) — par une suite de
-`N_DISC_JARRET` sous-barres dont la section décroît linéairement du genou vers
+`N_DISC_JARRET` sous-barres dont la section décroît linéairement de l'épaule vers
 la sortie de jarret.
 
 Le solveur *legacy* (`calcport._SolveurLegacy`) n'est **pas** modifié : il reste
@@ -21,7 +21,7 @@ Contenu :
     Recoupée avec PropSection v1.0.4 (cf. `validation/jarrets/`, self-check en
     `__main__`).
   - `sections_jarret(arba, n_disc)` : la liste des `n_disc` sections, hauteur
-    d'âme échantillonnée au milieu de chaque tronçon (`2 · h` au genou →
+    d'âme échantillonnée au milieu de chaque tronçon (`2 · h` à l'épaule →
     `1 · h` à la sortie).
   - `construire_topologie(geom, n_disc)` : le descripteur de modèle discrétisé
     (coords, connectivité, cartes sémantiques barre/nœud).
@@ -44,9 +44,9 @@ from calcport import IPE, E, def_noeud_barres
 # section `calcport.jarret()`), utilisé pour la parité legacy ↔ PyNite.
 N_DISC_JARRET = int(os.environ.get("N_DISC_JARRET", "6"))
 
-# Loi de hauteur d'âme du jarret : DEUX fois la hauteur de traverse au genou,
+# Loi de hauteur d'âme du jarret : DEUX fois la hauteur de traverse à l'épaule,
 # UNE fois à la sortie (le 1,66 historique était une moyenne des deux).
-COEFF_H_GENOU = 2.0
+COEFF_H_EPAULE = 2.0
 COEFF_H_SORTIE = 1.0
 
 # Poids propre acier : daN/cm de barre par cm² de section (idem
@@ -193,7 +193,7 @@ def caracs_section_jarret(arba, h_ratio, n_arc=24):
 
     `arba` : nom du profil IPE de la traverse (ex. "IPE 400").
     `h_ratio` : hauteur totale du tronçon / hauteur de la traverse, dans
-        [`COEFF_H_SORTIE`, `COEFF_H_GENOU`] = [1, 2]. La semelle intermédiaire
+        [`COEFF_H_SORTIE`, `COEFF_H_EPAULE`] = [1, 2]. La semelle intermédiaire
         est placée à la profondeur `h` sous la fibre supérieure (position de la
         semelle inférieure de la traverse nue).
 
@@ -228,11 +228,11 @@ def _caracs_section_jarret_impl(arba, h_ratio, n_arc):
 
 
 def sections_jarret(arba, n_disc=None):
-    """Liste des `n_disc` sections du renfort d'épaule, du genou vers la sortie.
+    """Liste des `n_disc` sections du renfort d'épaule, de l'épaule vers la sortie.
 
     `h_ratio` échantillonné au **milieu** de chaque tronçon :
-        h_ratio_k = COEFF_H_GENOU − (COEFF_H_GENOU − COEFF_H_SORTIE)·(k+0.5)/n
-    (k = 0 côté genou). Avec `n_disc = 1`, renvoie la section
+        h_ratio_k = COEFF_H_EPAULE − (COEFF_H_EPAULE − COEFF_H_SORTIE)·(k+0.5)/n
+    (k = 0 côté épaule). Avec `n_disc = 1`, renvoie la section
     `calcport.jarret(arba)` d'origine (barre prismatique `1,66·h`) — mode
     « ancien modèle », parité legacy.
     """
@@ -241,15 +241,15 @@ def sections_jarret(arba, n_disc=None):
     if n_disc == 1:
         from calcport import jarret
         return [jarret(arba)]
-    span = COEFF_H_GENOU - COEFF_H_SORTIE
-    return [caracs_section_jarret(arba, COEFF_H_GENOU - span * (k + 0.5) / n_disc)
+    span = COEFF_H_EPAULE - COEFF_H_SORTIE
+    return [caracs_section_jarret(arba, COEFF_H_EPAULE - span * (k + 0.5) / n_disc)
             for k in range(n_disc)]
 
 
 def _h_ratios(n_disc):
-    """h_ratio au milieu de chaque tronçon, du genou vers la sortie."""
-    span = COEFF_H_GENOU - COEFF_H_SORTIE
-    return [COEFF_H_GENOU - span * (k + 0.5) / n_disc for k in range(n_disc)]
+    """h_ratio au milieu de chaque tronçon, de l'épaule vers la sortie."""
+    span = COEFF_H_EPAULE - COEFF_H_SORTIE
+    return [COEFF_H_EPAULE - span * (k + 0.5) / n_disc for k in range(n_disc)]
 
 
 def offset_axe_neutre(arba, h_ratio, n_arc=24):
@@ -283,17 +283,17 @@ class Topologie:
         poteau G, [n_disc tronçons jarret G], traverse G, traverse D,
         [n_disc tronçons jarret D], poteau D.
     - `roles`   : par barre, `("poteau",)` | `("traverse",)` |
-      `("jarret", t)` où `t` = index du tronçon **depuis le genou** (0 = genou).
+      `("jarret", t)` où `t` = index du tronçon **depuis l'épaule** (0 = épaule).
     - cartes sémantiques : `node_tete_g` (1), `node_tete_d` (5),
       `node_faitage` (3), `node_sortie_jarret_g` (2), `node_sortie_jarret_d` (4)
       — inchangées car N0..N6 gardent leurs indices ; `bars_jarret_g` /
-      `bars_jarret_d` (index des barres), `bar_genou_g` / `bar_genou_d`.
+      `bars_jarret_d` (index des barres), `bar_epaule_g` / `bar_epaule_d`.
     """
 
     __slots__ = ("n_disc", "coords", "conn", "roles", "nN", "nbar",
                  "node_tete_g", "node_tete_d", "node_faitage",
                  "node_sortie_jarret_g", "node_sortie_jarret_d",
-                 "bars_jarret_g", "bars_jarret_d", "bar_genou_g", "bar_genou_d",
+                 "bars_jarret_g", "bars_jarret_d", "bar_epaule_g", "bar_epaule_d",
                  "excentre_arba")
 
 
@@ -304,8 +304,8 @@ def construire_topologie(geom, n_disc=None, arba=None):
     `calcport.def_noeud_barres` (garde-fou de parité legacy).
 
     `arba` (nom de profil) : [PROTOTYPE étape 3] mode **excentré** — les nœuds
-    du jarret (genou, intérieurs, sortie) sont abaissés sur l'axe neutre
-    (centre de gravité) de la section locale ; le nœud de genou étant le sommet
+    du jarret (épaule, intérieurs, sortie) sont abaissés sur l'axe neutre
+    (centre de gravité) de la section locale ; le nœud d'épaule étant le sommet
     du poteau, celui-ci est physiquement raccourci. Le jarret n'est alors plus
     colinéaire à la traverse. Sans `arba` : jarret sur la ligne de la traverse
     (comportement par défaut de l'étape 3).
@@ -328,7 +328,7 @@ def construire_topologie(geom, n_disc=None, arba=None):
 
     def _chaine_jarret(na, nb, sens):
         """Ajoute `n_disc` barres de `na` à `nb` (nœuds intérieurs → fin de
-        `coords`). `sens = +1` : le genou est en `na` ; `sens = -1` : en `nb`."""
+        `coords`). `sens = +1` : l'épaule est en `na` ; `sens = -1` : en `nb`."""
         (xa, ya), (xb, yb) = coords[na], coords[nb]
         interm = []
         for k in range(1, n_disc):
@@ -340,16 +340,16 @@ def construire_topologie(geom, n_disc=None, arba=None):
         for m in range(n_disc):
             conn.append((noeuds[m], noeuds[m + 1]))
             bars.append(len(conn) - 1)
-            # tronçon depuis le genou
+            # tronçon depuis l'épaule
             t = m if sens > 0 else (n_disc - 1 - m)
             roles.append(("jarret", t))
         return bars
 
     conn.append((N0, N1)); roles.append(("poteau",))                  # poteau G
-    topo.bars_jarret_g = _chaine_jarret(N1, N2, sens=+1)              # jarret G (genou = N1)
+    topo.bars_jarret_g = _chaine_jarret(N1, N2, sens=+1)              # jarret G (épaule = N1)
     conn.append((N2, N3)); roles.append(("traverse",))               # traverse G
     conn.append((N3, N4)); roles.append(("traverse",))               # traverse D
-    topo.bars_jarret_d = _chaine_jarret(N4, N5, sens=-1)             # jarret D (genou = N5)
+    topo.bars_jarret_d = _chaine_jarret(N4, N5, sens=-1)             # jarret D (épaule = N5)
     conn.append((N5, N6)); roles.append(("poteau",))                 # poteau D
 
     topo.coords = coords
@@ -357,24 +357,24 @@ def construire_topologie(geom, n_disc=None, arba=None):
     topo.roles = roles
     topo.nN = len(coords)
     topo.nbar = len(conn)
-    topo.bar_genou_g = topo.bars_jarret_g[0]
-    topo.bar_genou_d = topo.bars_jarret_d[-1]
+    topo.bar_epaule_g = topo.bars_jarret_g[0]
+    topo.bar_epaule_d = topo.bars_jarret_d[-1]
     topo.excentre_arba = None
 
     if arba is not None and n_disc > 1:
         # --- [PROTOTYPE] abaissement des nœuds du jarret sur l'axe neutre ---
-        e = [offset_axe_neutre(arba, hr) for hr in _h_ratios(n_disc)]   # par tronçon (genou->sortie)
-        # offset au nœud p (0 = genou, n_disc = sortie) : moyenne des tronçons adjacents
+        e = [offset_axe_neutre(arba, hr) for hr in _h_ratios(n_disc)]   # par tronçon (épaule->sortie)
+        # offset au nœud p (0 = épaule, n_disc = sortie) : moyenne des tronçons adjacents
         o = [e[0]] + [0.5 * (e[p - 1] + e[p]) for p in range(1, n_disc)] + [e[-1]]
 
         def _noeuds_chaine(bars):
             return [conn[bars[0]][0]] + [conn[b][1] for b in bars]
 
-        # jarret G : nœuds ordonnés genou(N1) -> sortie(N2) ; offsets o[0..n_disc]
+        # jarret G : nœuds ordonnés épaule(N1) -> sortie(N2) ; offsets o[0..n_disc]
         for p, nd in enumerate(_noeuds_chaine(topo.bars_jarret_g)):
             x, y = coords[nd]
             coords[nd] = (x, y - o[p])
-        # jarret D : nœuds ordonnés sortie(N4) -> genou(N5) ; offsets inversés
+        # jarret D : nœuds ordonnés sortie(N4) -> épaule(N5) ; offsets inversés
         for p, nd in enumerate(_noeuds_chaine(topo.bars_jarret_d)):
             x, y = coords[nd]
             coords[nd] = (x, y - o[n_disc - p])

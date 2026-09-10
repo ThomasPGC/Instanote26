@@ -47,7 +47,7 @@ et **acceptation à l'inscription**.
   sur les 3 jeux de validation → Timoshenko dans la raideur non justifié.
 - **Renfort d'épaule** — **étape 3 faite** : côté backend **PyNite** le renfort
   est discrétisé en `N_DISC_JARRET = 6` tronçons à inertie variable, âme
-  dégressive **linéaire de `2·h` (genou) à `1·h` (sortie)** (le `1,66` était une
+  dégressive **linéaire de `2·h` (épaule) à `1·h` (sortie)** (le `1,66` était une
   moyenne), section reconstituée en **I à 3 semelles + congés `r`**
   (`jarret_discret.caracs_section_jarret`, recoupée PropSection à < 0,5 % sur
   Iy). Longueur inchangée (10 % de la portée). Le **solveur legacy** garde la

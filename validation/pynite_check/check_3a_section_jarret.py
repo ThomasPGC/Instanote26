@@ -8,7 +8,7 @@ congés `r`, reconstituée par intégration du contour) :
      « section paramétrée » n°7) sur IPE 160 / 300 / 450, hr = 150 % et ~200 % ;
   2. garde-fou : le contour à 2 semelles (hauteur h) retombe sur l'IPE
      catalogue au chiffre près (l'intégrateur est juste) ;
-  3. monotonie de la loi dégressive (A, Iy, Wpl.y décroissent du genou vers la
+  3. monotonie de la loi dégressive (A, Iy, Wpl.y décroissent de l'épaule vers la
      sortie) ;
   4. `sections_jarret(arba, 1)` == `[calcport.jarret(arba)]` (mode ancien
      modèle, parité legacy).
@@ -69,7 +69,7 @@ for prof in ("IPE 160", "IPE 300", "IPE 450", "IPE 600"):
     _chk("Iy", Iy, d["Iy"], 0.3, f"{prof} (cat.)")
     _chk("Wpl.y", wpl, d["Wpl.y"], 0.5, f"{prof} (cat.)")
 
-print("\n[3] monotonie de la loi dégressive (genou -> sortie)")
+print("\n[3] monotonie de la loi dégressive (épaule -> sortie)")
 for prof in ("IPE 160", "IPE 240", "IPE 400", "IPE 600"):
     secs = J.sections_jarret(prof, 6)
     mono = all(secs[k + 1][key] < secs[k][key]

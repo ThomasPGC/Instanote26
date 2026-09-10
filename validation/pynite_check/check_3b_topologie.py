@@ -7,8 +7,8 @@ Vérifie `jarret_discret.construire_topologie` / `expanser_charges` /
   1. `n_disc = 1` reproduit EXACTEMENT `calcport.def_noeud_barres` (coords,
      connectivité, rôles) — garde-fou de parité legacy ;
   2. `n_disc = 6` : comptes de nœuds/barres, N0..N6 préservés, tronçons de
-     jarret colinéaires à la traverse, genou correctement ancré (N1 à gauche,
-     N5 à droite), tronçons numérotés depuis le genou ;
+     jarret colinéaires à la traverse, épaule correctement ancrée (N1 à gauche,
+     N5 à droite), tronçons numérotés depuis l'épaule ;
   3. `expanser_charges` : identité en `n_disc = 1` ; en `n_disc = 6`, recopie
      de la charge de jarret sur les tronçons + slots nodaux N0..N6 conservés +
      nœuds intérieurs à charge nulle ;
@@ -73,12 +73,12 @@ for g in GEOMS:
         _fail(f"nN={t.nN} nbar={t.nbar} (attendu 17/16)")
     if t.coords[:7] != ref_coords:
         _fail("N0..N6 non préservés")
-    ig, jg = t.conn[t.bar_genou_g]
-    idd, jd = t.conn[t.bar_genou_d]
+    ig, jg = t.conn[t.bar_epaule_g]
+    idd, jd = t.conn[t.bar_epaule_d]
     if ig != 1:
-        _fail(f"genou G non ancré à N1 (barre {t.bar_genou_g} = {ig}-{jg})")
+        _fail(f"épaule G non ancrée à N1 (barre {t.bar_epaule_g} = {ig}-{jg})")
     if jd != 5:
-        _fail(f"genou D non ancré à N5 (barre {t.bar_genou_d} = {idd}-{jd})")
+        _fail(f"épaule D non ancrée à N5 (barre {t.bar_epaule_d} = {idd}-{jd})")
     if [t.roles[b][1] for b in t.bars_jarret_g] != [0, 1, 2, 3, 4, 5]:
         _fail("tronçons jarret G mal numérotés")
     if [t.roles[b][1] for b in t.bars_jarret_d] != [5, 4, 3, 2, 1, 0]:
