@@ -247,6 +247,137 @@ def sections_jarret(arba, n_disc=None):
 
 
 # ==========================================================================
+#  Topologie du portique discrétisé
+# ==========================================================================
+
+class Topologie:
+    """Descripteur géométrique du portique, renfort d'épaule discrétisé en
+    `n_disc` tronçons par côté.
+
+    - `coords`  : liste de (X, Y) en cm, `nN` nœuds. Les 7 premiers (N0..N6)
+      sont EXACTEMENT ceux de `calcport.def_noeud_barres` (mêmes indices, même
+      sens) ; les nœuds intérieurs de jarret sont ajoutés à la fin (N7…).
+    - `conn`    : liste de (i, j), `nbar` barres, de gauche à droite :
+        poteau G, [n_disc tronçons jarret G], traverse G, traverse D,
+        [n_disc tronçons jarret D], poteau D.
+    - `roles`   : par barre, `("poteau",)` | `("traverse",)` |
+      `("jarret", t)` où `t` = index du tronçon **depuis le genou** (0 = genou).
+    - cartes sémantiques : `node_tete_g` (1), `node_tete_d` (5),
+      `node_faitage` (3), `node_sortie_jarret_g` (2), `node_sortie_jarret_d` (4)
+      — inchangées car N0..N6 gardent leurs indices ; `bars_jarret_g` /
+      `bars_jarret_d` (index des barres), `bar_genou_g` / `bar_genou_d`.
+    """
+
+    __slots__ = ("n_disc", "coords", "conn", "roles", "nN", "nbar",
+                 "node_tete_g", "node_tete_d", "node_faitage",
+                 "node_sortie_jarret_g", "node_sortie_jarret_d",
+                 "bars_jarret_g", "bars_jarret_d", "bar_genou_g", "bar_genou_d")
+
+
+def construire_topologie(geom, n_disc=None):
+    """Construit la `Topologie` du portique pour `n_disc` tronçons de jarret.
+
+    `n_disc = 1` : reproduit à l'identique les 7 nœuds / 6 barres de
+    `calcport.def_noeud_barres` (garde-fou de parité legacy).
+    """
+    if n_disc is None:
+        n_disc = N_DISC_JARRET
+
+    A, B = def_noeud_barres(geom, "IPE 80", "IPE 80")
+    base = [(nd.X, nd.Y) for nd in A]          # N0..N6, ordre et indices figés
+    N0, N1, N2, N3, N4, N5, N6 = range(7)
+
+    topo = Topologie()
+    topo.n_disc = n_disc
+    topo.node_tete_g, topo.node_tete_d, topo.node_faitage = N1, N5, N3
+    topo.node_sortie_jarret_g, topo.node_sortie_jarret_d = N2, N4
+
+    coords = list(base)
+    conn = []
+    roles = []
+
+    def _chaine_jarret(na, nb, sens):
+        """Ajoute `n_disc` barres de `na` à `nb` (nœuds intérieurs → fin de
+        `coords`). `sens = +1` : le genou est en `na` ; `sens = -1` : en `nb`."""
+        (xa, ya), (xb, yb) = coords[na], coords[nb]
+        interm = []
+        for k in range(1, n_disc):
+            f = k / n_disc
+            coords.append((xa + f * (xb - xa), ya + f * (yb - ya)))
+            interm.append(len(coords) - 1)
+        noeuds = [na] + interm + [nb]
+        bars = []
+        for m in range(n_disc):
+            conn.append((noeuds[m], noeuds[m + 1]))
+            bars.append(len(conn) - 1)
+            # tronçon depuis le genou
+            t = m if sens > 0 else (n_disc - 1 - m)
+            roles.append(("jarret", t))
+        return bars
+
+    conn.append((N0, N1)); roles.append(("poteau",))                  # poteau G
+    topo.bars_jarret_g = _chaine_jarret(N1, N2, sens=+1)              # jarret G (genou = N1)
+    conn.append((N2, N3)); roles.append(("traverse",))               # traverse G
+    conn.append((N3, N4)); roles.append(("traverse",))               # traverse D
+    topo.bars_jarret_d = _chaine_jarret(N4, N5, sens=-1)             # jarret D (genou = N5)
+    conn.append((N5, N6)); roles.append(("poteau",))                 # poteau D
+
+    topo.coords = coords
+    topo.conn = conn
+    topo.roles = roles
+    topo.nN = len(coords)
+    topo.nbar = len(conn)
+    topo.bar_genou_g = topo.bars_jarret_g[0]
+    topo.bar_genou_d = topo.bars_jarret_d[-1]
+    return topo
+
+
+def sections_par_barre(topo, poteau, arba):
+    """Liste des dicts de section (mêmes clés que `calcport.jarret()`) barre par
+    barre, dans l'ordre de `topo.conn` — même correspondance que
+    `calcport.change_sections` : poteau IPE pour les poteaux, traverse IPE pour
+    les traverses, `sections_jarret(arba, n_disc)` tronçon par tronçon."""
+    secs_jarret = sections_jarret(arba, topo.n_disc)
+    dico_pot = IPE.dict_carac(poteau)
+    dico_arb = IPE.dict_carac(arba)
+    out = []
+    for role in topo.roles:
+        if role[0] == "poteau":
+            out.append(dico_pot)
+        elif role[0] == "traverse":
+            out.append(dico_arb)
+        else:
+            out.append(secs_jarret[role[1]])
+    return out
+
+
+def expanser_charges(charges, topo):
+    """Projette les cas de charge « logiques » de `chargement_nv` (tableau par
+    barre à 6 segments, tableau nodal à 21 slots) sur le modèle discrétisé.
+
+    - Par barre : `[pot_g, jarret_g, trav_g, trav_d, jarret_d, pot_d]` →
+      `[pot_g] + [jarret_g]·n_disc + [trav_g, trav_d] + [jarret_d]·n_disc + [pot_d]`
+      (les tronçons de jarret sont colinéaires à la pente : même charge
+      linéique).
+    - Par nœud : les 21 slots N0..N6 sont conservés tels quels (N0..N6 gardent
+      leurs indices) ; les nœuds intérieurs de jarret reçoivent une charge
+      nodale nulle. Le « surplus fin de jarret » (neige, accumulation, vent de
+      rive) reste donc porté par N2 / N4 = `node_sortie_jarret_*`.
+
+    Renvoie une nouvelle liste de cas `(nom, ch_barres, ch_noeuds)`.
+    """
+    n = topo.n_disc
+    out = []
+    for nom, ch_bar, ch_noeud in charges:
+        pg, jg, tg, td, jd, pd = ch_bar
+        bar_exp = [pg] + [jg] * n + [tg, td] + [jd] * n + [pd]
+        assert len(bar_exp) == topo.nbar, (len(bar_exp), topo.nbar)
+        noeud_exp = list(ch_noeud) + [0.0] * (3 * (topo.nN - 7))
+        out.append((nom, bar_exp, noeud_exp))
+    return out
+
+
+# ==========================================================================
 #  self-check : recoupement PropSection (validation/jarrets/*.png)
 # ==========================================================================
 # PropSection v1.0.4, « Section Paramétrée » n°7 (I à 3 semelles + congés r).
